@@ -27,7 +27,6 @@ test('多条依据明确选择，保留其他来源，最后一条自动回收',
  await page.getByLabel('回收理由').fill('支持结束')
  await page.getByRole('button',{name:'确认回收',exact:true}).click()
  await expect(page.getByRole('dialog',{name:'选择回收依据',exact:true})).toBeVisible()
- await page.screenshot({path:'.review-design-v3/回收依据选择.png',fullPage:true})
  await expect(page.getByRole('dialog').getByRole('checkbox',{checked:true})).toHaveCount(0)
  await page.getByRole('button',{name:'确认选择',exact:true}).click()
  await expect(page.locator('.toast')).toContainText('请选择有效的回收依据')
@@ -60,6 +59,7 @@ test('多条依据明确选择，保留其他来源，最后一条自动回收',
 
 test('批量回收混合单条与多条依据，单条自动定位，每人必须有回收依据',async({page})=>{
  await page.goto('/')
+ await expect(page.locator('.shell')).toBeVisible()
  await page.evaluate(()=>{
   const users=JSON.parse(localStorage.getItem('access-users'))
   users.find(u=>u.id==='U008').roleGrants.push(
@@ -98,12 +98,10 @@ test('授权页面仅显示紧凑操作栏和理由，移动布局正常',async(
  await page.getByRole('checkbox',{name:'选择林晓',exact:true}).check()
  await page.getByRole('checkbox',{name:'选择张明',exact:true}).check()
  await page.getByLabel('授权理由').fill('项目协作需要')
- await page.screenshot({path:'.review-design-v3/授权界面-桌面.png',fullPage:true})
  await page.setViewportSize({width:390,height:844})
  await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
  await page.getByLabel('权限操作',{exact:true}).selectOption('revoke')
  await expect(page.getByLabel('回收理由')).toBeVisible()
- await page.screenshot({path:'.review-design-v3/授权界面-移动.png',fullPage:true})
 })
 
 test('调岗上下文显示具体记录，改变目标后需要手工依据',async({page})=>{

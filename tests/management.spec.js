@@ -4,6 +4,7 @@ const navigate = (page, name) => page.locator('aside nav').getByRole('button', {
 
 test('旧版调岗记录兼容处理，清理人工确认标记，查看结果不改变数据',async({page})=>{
  await page.goto('/')
+ await expect(page.locator('.shell')).toBeVisible()
  await page.evaluate(()=>localStorage.setItem('access-changes',JSON.stringify([{id:1,name:'王雨晴',from:'运营管理部',to:'财务部',type:'岗位调动',state:'已处理',recoveryConfirmed:true,handoverConfirmed:true}])))
  await page.reload()
  await navigate(page,'人员与组织变动')

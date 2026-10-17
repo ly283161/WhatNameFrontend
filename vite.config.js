@@ -1,7 +1,13 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
-export default defineConfig({
-  plugins: [vue()],
-  // Temporary repeatable demo: each dev-server start or production build gets a new generation.
-  define: { __DEMO_BUILD_ID__: JSON.stringify(String(Date.now())) },
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '')
+  return {
+    plugins: [vue()],
+    server: {
+      proxy: { '/api': { target: env.API_PROXY_TARGET || 'http://127.0.0.1:8080', changeOrigin: true } },
+    },
+    define: mode === 'demo' ? { __DEMO_BUILD_ID__: JSON.stringify(String(Date.now())) } : {},
+    build: { target: 'es2022' },
+  }
 })

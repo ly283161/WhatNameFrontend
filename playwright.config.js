@@ -10,10 +10,12 @@ export default defineConfig({
     screenshot: 'only-on-failure',
     trace: 'retain-on-failure',
   },
-  webServer: {
-    command: 'npm run dev -- --port 5174 --strictPort',
-    url: 'http://127.0.0.1:5174',
-    reuseExistingServer: false,
-    timeout: 30_000,
-  },
+  projects: [
+    { name: 'prototype', testIgnore: '**/application.spec.js' },
+    { name: 'application', testMatch: '**/application.spec.js', use: { baseURL: 'http://127.0.0.1:5175' } },
+  ],
+  webServer: [
+    { command: 'npm run dev:demo -- --port 5174 --strictPort', url: 'http://127.0.0.1:5174', reuseExistingServer: false, timeout: 30_000 },
+    { command: 'npm run dev -- --port 5175 --strictPort', url: 'http://127.0.0.1:5175', reuseExistingServer: false, timeout: 30_000 },
+  ],
 })

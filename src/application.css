@@ -1,0 +1,26 @@
+.login-page { min-height:100vh; display:grid; grid-template-columns:minmax(280px, 1fr) minmax(320px, 1fr); padding:0 }
+.login-intro { background:#172d29; color:#f5f8f6; display:flex; flex-direction:column; justify-content:center; align-items:flex-start; padding:clamp(32px, 7vw, 110px); gap:24px }
+.login-intro svg { color:#e6aa78 }
+.login-intro h1 { font-size:clamp(28px, 3vw, 42px); letter-spacing:.04em }
+.login-intro p { color:#bacbc3; line-height:1.8 }
+.login-rule { height:1px; width:72px; background:#e6aa78; margin-top:30px }
+.login-caption { font-size:12px }
+.login-card { width:min(380px, calc(100% - 48px)); margin:auto; padding:48px 0 }
+.login-card h2 { font-size:24px; margin:0 0 12px }
+.login-card form { display:grid; gap:22px; margin-top:34px }
+.login-card label { display:grid; gap:10px; font-weight:500 }
+.login-card input, .login-card select { width:100%; min-height:44px }
+.login-submit { width:100%; min-height:44px }
+.app-error { color:#9d3529; line-height:1.7; overflow-wrap:anywhere }
+.live-welcome { padding:28px; display:grid; justify-items:start; gap:20px }
+.list-error { padding:24px; display:grid; justify-items:start; gap:16px }
+.pagination { display:flex; gap:10px }
+button:disabled { cursor:not-allowed; opacity:.5 }
+@media(max-width:700px) {
+  .login-page { grid-template-columns:1fr }
+  .login-intro { padding:30px 24px; gap:14px }
+  .login-intro svg { width:32px; height:32px }
+  .login-rule, .login-caption { display:none }
+  .login-card { padding:32px 0; margin:0 auto }
+  .table-footer { flex-wrap:wrap; gap:12px }
+}

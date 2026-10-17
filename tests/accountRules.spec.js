@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { normalizeUser, applyHrTransfer, updateRoleAuthorization } from '../src/accountRules.js'
+import { normalizeUser, applyHrTransfer, updateRoleAuthorization } from '../src/demo/accountRules.js'
 
 test('同角色按不同业务依据独立登记，缺失依据拒绝，回收全部有效依据', () => {
   const user = normalizeUser({ id: 'u', roles: [] })
