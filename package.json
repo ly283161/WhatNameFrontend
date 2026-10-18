@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "dev:demo": "vite --host 0.0.0.0 --mode demo",
+    "dev:mock": "vite --host 127.0.0.1 --mode mock",
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0",
     "test": "playwright test",

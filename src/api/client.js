@@ -7,7 +7,7 @@ export class ApiError extends Error {
 }
 
 export function createApiClient({ baseUrl = '/api/v1', getToken = () => null, onUnauthorized = () => {} } = {}) {
-  return async function request(path, { method = 'GET', query, body, authenticated = true, signal } = {}) {
+  return async function request(path, { method = 'GET', query, body, authenticated = true, signal, headers = {}, allowPending = false } = {}) {
     const token = authenticated ? getToken() : null
     if (authenticated && !token) throw new ApiError('请先登录', { status: 401 })
     const controller = new AbortController()
@@ -22,7 +22,7 @@ export function createApiClient({ baseUrl = '/api/v1', getToken = () => null, on
       }
       const response = await fetch(`${baseUrl.replace(/\/$/, '')}${path}${params.size ? '?' + params : ''}`, {
         method,
-        headers: { Accept: 'application/json', ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        headers: { ...headers, Accept: 'application/json', ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: body === undefined ? undefined : JSON.stringify(body),
         signal: controller.signal,
         credentials: 'omit',
@@ -36,7 +36,7 @@ export function createApiClient({ baseUrl = '/api/v1', getToken = () => null, on
         const message = response.status === 401 ? '账号或密码错误，或登录已失效' : response.status === 403 ? '你没有执行此操作的权限' : payload?.message || '服务暂时不可用，请稍后重试'
         throw new ApiError(message, { status: response.status, code: payload?.code, requestId: payload?.requestId })
       }
-      if (response.status === 202 || payload?.success !== true || !Object.hasOwn(payload, 'data')) {
+      if ((response.status === 202 && !allowPending) || payload?.success !== true || !Object.hasOwn(payload, 'data')) {
         throw new ApiError('服务返回的数据不符合接口约定', { status: response.status, requestId: payload?.requestId })
       }
       return payload.data
