@@ -1,5 +1,5 @@
 <script setup>
-import { ref, defineAsyncComponent } from 'vue'
+import { ref } from 'vue'
 import { UserRound, Smartphone, LockKeyhole, Eye, EyeOff, ShieldCheck } from 'lucide-vue-next'
 import { session, login } from './session.js'
 import ConsoleView from './views/ConsoleView.vue'
@@ -15,8 +15,6 @@ try {
     loginType.value = account.loginType; identifier.value = account.identifier; remember.value = true
   }
 } catch { /* Remembering an account is optional when browser storage is unavailable. */ }
-const mockMode = import.meta.env.DEV && import.meta.env.VITE_STAGE1_MOCK === 'true'
-const MockBanner = mockMode ? defineAsyncComponent(() => import('./components/MockBanner.vue')) : null
 async function submit() {
   if (busy.value) return
   error.value = ''
@@ -35,7 +33,6 @@ async function submit() {
 </script>
 
 <template>
-  <MockBanner v-if="mockMode" />
   <ConsoleView v-if="session.userId" />
   <div v-else class="login-stage"><main class="login-page">
     <section class="login-intro" aria-label="城市建筑"><div class="login-photo-brand"><ShieldCheck :size="22" /><span>统一权限管理</span></div><div class="login-photo-caption"><span>连接每一份职责</span><p>让协作有序，让权限清晰。</p></div></section>

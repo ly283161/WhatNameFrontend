@@ -9,5 +9,6 @@ export const pages = [
   { id: 'audit', label: '操作日志', code: 'IAM_AUDIT_VIEW', path: '/audit' },
 ]
 // UI visibility only. Each backend endpoint must independently enforce its permission.
-export const can = code => session.menus.some(menu => menu.menuCode === code)
-export const canVisit = page => can(page.code) || session.menus.some(menu => menu.path === page.path)
+export const can = code => !session.accessError && session.menus.some(menu => menu.menuCode === code && menu.navigationOnly !== true && menu.menuType !== 1)
+export const canVisit = page => can(page.code)
+export const canGlobal = code => can(code) && session.scope?.appointed === true && session.scope.adminLevel === 1

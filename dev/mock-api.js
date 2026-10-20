@@ -20,7 +20,7 @@ export function mockApi() {
   let db, tokens, grants, userVersions, roleVersions, mappingVersions, mappings, delegations, delegationVersions, batches, idempotency, phoneUsers, sms, passwords, audit, logins, nextId
   function init() {
     db = JSON.parse(readFileSync(new URL('./fixtures.json', import.meta.url), 'utf8'))
-    tokens = new Map(); grants = []; userVersions = new Map(); roleVersions = new Map(); mappingVersions = new Map(); mappings = new Map(); delegations = new Map([['101', db.roles.map(r => r.roleId)]]); delegationVersions = new Map(); batches = new Map(); idempotency = new Map(); phoneUsers = new Map([['13800000000', '101']]); sms = new Map(); passwords = new Map([['101', 'Admin123!']]); nextId = 50000
+    tokens = new Map(); grants = []; userVersions = new Map(); roleVersions = new Map(); mappingVersions = new Map(); mappings = new Map(); delegations = new Map([['101', db.roles.map(r => r.roleId)]]); delegationVersions = new Map(); batches = new Map(); idempotency = new Map(); phoneUsers = new Map([['13800000000', '101']]); sms = new Map(); passwords = new Map([['101', '123456']]); nextId = 50000
     db.admins = [{ userId: '101', adminLevel: 1, deptId: '1', status: 1 }]
     db.apis = [{ apiId: '41', appId: db.applications.find(a => a.appCode === 'IAM').appId, apiCode: 'IAM_USERS_LIST', apiName: '用户查询', httpMethod: 'GET', apiPath: '/api/v1/users', status: 1 }]
     audit = [{ eventId: '1', operationType: 'MOCK_INITIALIZATION', actorUserId: '101', targetId: '101', occurredAt: new Date().toISOString() }]; logins = []
@@ -32,7 +32,7 @@ export function mockApi() {
   function paginate(rows, query) {
     const page = Number(query.get('page') || 1), pageSize = Number(query.get('pageSize') || 20)
     if (!Number.isSafeInteger(page) || page < 1 || !Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > 500) fail('分页参数不合法')
-    return { items: rows.slice((page - 1) * pageSize, page * pageSize), page, pageSize, total: rows.length }
+    return { items: rows.slice((page - 1) * pageSize, page * pageSize), page, pageSize, total: String(rows.length) }
   }
   function grant(body, revoke = false) {
     required(body, ['userId', 'roleId', ...(revoke ? ['grantSourceId'] : ['sourceType', 'sourceRef'])]); reason(body)
@@ -97,7 +97,7 @@ export function mockApi() {
     if (path === '/auth/logout' && method === 'POST') { tokens.delete(token); return send({ revoked: true }) }
     if (path === '/auth/menus' && method === 'GET') return send({ appCode: query.get('appCode'), menus: tokens.get(token).userId !== '101' ? [] : [...pageDefinitions.map((p, i) => ({ menuId: String(90001 + i), menuName: p[1], menuCode: p[2], path: p[3] })), ...writePermissions.map((code, i) => ({ menuId: String(90101 + i), menuName: code, menuCode: code, path: '' }))] })
     if (tokens.get(token).userId !== '101') fail('测试普通账号未获管理资格', 'PERMISSION_DENIED', 403)
-    if (path === '/users' && method === 'GET') { const keyword = (query.get('keyword') || '').toLowerCase(); return send(paginate(db.users.filter(u => (!query.get('deptId') || u.deptId === query.get('deptId')) && [u.realName, u.username, u.sgNo].some(v => String(v || '').toLowerCase().includes(keyword))), query)) }
+    if (path === '/users' && method === 'GET') { const keyword = (query.get('keyword') || '').toLowerCase(); return send(paginate(db.users.filter(u => (!query.get('deptId') || u.deptId === query.get('deptId')) && (!query.get('status') || u.status === Number(query.get('status'))) && (!query.get('source') || u.source === Number(query.get('source'))) && [u.realName, u.username, u.sgNo].some(v => String(v || '').toLowerCase().includes(keyword))), query)) }
     if (path === '/users/temporary' && method === 'POST') {
       fields(body, ['realName', 'phone', 'deptId', 'reason']); required(body, ['realName', 'phone', 'deptId']); reason(body); positiveId(body.deptId); found(db.departments, 'deptId', body.deptId)
       if (!/^1\d{10}$/.test(body.phone)) fail('手机号格式不合法')
@@ -146,9 +146,9 @@ export function mockApi() {
       }
     }
     if ((match = path.match(/^\/menus\/(\d+)$/)) && method === 'PATCH') {
-      fields(body, ['parentId', 'status', 'reason']); reason(body); required(body, ['parentId', 'status']); const menu = found(db.menus, 'menuId', match[1]); if (![0, 1].includes(body.status)) fail('状态不合法')
+      fields(body, ['menuName', 'parentId', 'status', 'reason']); reason(body); required(body, ['parentId', 'status']); if (body.menuName !== undefined) required(body, ['menuName']); const menu = found(db.menus, 'menuId', match[1]); if (![0, 1].includes(body.status)) fail('状态不合法')
       if (body.parentId !== '0') { let parent = found(db.menus, 'menuId', body.parentId); const seen = new Set([menu.menuId]); while (parent) { if (seen.has(parent.menuId) || parent.appId !== menu.appId || parent.menuType !== 1) fail('目录循环或父级不合法'); seen.add(parent.menuId); parent = db.menus.find(m => m.menuId === parent.parentId) } }
-      Object.assign(menu, { parentId: body.parentId, status: body.status }); record('MENU_UPDATE', menu.menuId); return send(menu)
+      Object.assign(menu, { parentId: body.parentId, status: body.status, ...(body.menuName !== undefined ? { menuName: body.menuName } : {}) }); record('MENU_UPDATE', menu.menuId); return send(menu)
     }
     if ((match = path.match(/^\/applications\/(\d+)\/apis$/))) {
       found(db.applications, 'appId', match[1])
@@ -193,7 +193,11 @@ export function mockApi() {
       status = 202; return send({ batchId, processingStatus: 'PENDING', total: batch.items.length })
     }
     if ((match = path.match(/^\/grants\/batches\/(\d+)$/)) && method === 'GET') return send(batchResult(batches.get(match[1]) || fail('任务不存在', 'RESOURCE_NOT_FOUND', 404), query))
-    if (path === '/grants/history' && method === 'GET') return send(paginate(audit.filter(a => a.operationType.startsWith('USER_ROLE') && (!query.get('roleId') || a.roleId === query.get('roleId')) && (!query.get('userId') || a.targetId === query.get('userId'))).map(a => ({ eventId: a.eventId, userId: a.targetId, roleId: a.roleId, grantSourceId: a.grantSourceId, operation: a.operationType.endsWith('REVOKE') ? 'REVOKE' : 'GRANT', occurredAt: a.occurredAt })), query))
+    if (path === '/grants/history' && method === 'GET') {
+      const from = query.get('from'), to = query.get('to')
+      if ((from && Number.isNaN(Date.parse(from))) || (to && Number.isNaN(Date.parse(to))) || (from && to && Date.parse(from) > Date.parse(to))) fail('时间范围不合法')
+      return send(paginate(audit.filter(a => a.operationType.startsWith('USER_ROLE') && (!query.get('roleId') || a.roleId === query.get('roleId')) && (!query.get('userId') || a.targetId === query.get('userId')) && (!from || Date.parse(a.occurredAt) >= Date.parse(from)) && (!to || Date.parse(a.occurredAt) <= Date.parse(to))).map(a => ({ eventId: a.eventId, userId: a.targetId, roleId: a.roleId, grantSourceId: a.grantSourceId, operation: a.operationType.endsWith('REVOKE') ? 'REVOKE' : 'GRANT', occurredAt: a.occurredAt })), query))
+    }
     if (path === '/admins/me/scope' && method === 'GET') return send({ appointed: true, adminLevel: 1, deptId: '1', scopeRootIds: ['1'], delegableRolesVersion: revision(delegationVersions, '101') })
     if (path === '/admins' && method === 'GET') return send(paginate(db.admins.filter(a => !query.get('deptId') || a.deptId === query.get('deptId')), query))
     if (path === '/admins/appointments' && method === 'POST') { fields(body, ['userId', 'adminLevel', 'deptId', 'reason']); reason(body); required(body, ['userId', 'adminLevel', 'deptId']); positiveId(body.userId); found(db.users, 'userId', body.userId); found(db.departments, 'deptId', body.deptId); if (!Number.isInteger(body.adminLevel) || body.adminLevel < 1 || body.adminLevel > 65535) fail('等级不合法'); let admin = db.admins.find(a => a.userId === body.userId); if (admin) Object.assign(admin, { adminLevel: body.adminLevel, deptId: body.deptId, status: 1 }); else { admin = { userId: body.userId, adminLevel: body.adminLevel, deptId: body.deptId, status: 1 }; db.admins.push(admin) }; delegations.set(body.userId, []); bump(delegationVersions, body.userId); record('ADMIN_APPOINT', body.userId); return send(admin) }

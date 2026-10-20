@@ -1,10 +1,12 @@
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import { X } from 'lucide-vue-next'
+import { refreshAccess, session } from '../session.js'
 import { errorText } from '../composables/useList.js'
-const props = defineProps({ title: String, fields: Array, initial: Object, submit: Function, note: String })
+const props = defineProps({ title: String, fields: Array, initial: Object, submit: Function, note: String, allowed: { type: Boolean, default: true } })
 const emit = defineEmits(['close', 'saved'])
 const values = ref(JSON.parse(JSON.stringify(props.initial || {}))), busy = ref(false), error = ref(''), panel = ref()
+watch(() => props.allowed, allowed => { if (!allowed) emit('close') })
 const previous = document.activeElement
 onMounted(() => panel.value?.querySelector('input,select,textarea,button')?.focus())
 onBeforeUnmount(() => previous?.focus?.())
@@ -18,7 +20,10 @@ async function save() {
       if (typeof body[field.key] === 'string') body[field.key] = body[field.key].trim()
       if (field.required !== false && field.type !== 'multi' && (body[field.key] === '' || body[field.key] === undefined)) throw new Error('请填写' + field.label)
     }
+    if (!props.allowed) throw new Error('当前操作权限已变化，请重新查询')
+    if (session.accessError) throw new Error('当前权限信息不可用，请先重新读取权限')
     const result = await props.submit(body)
+    await refreshAccess()
     emit('saved', result); emit('close')
   } catch (e) { error.value = errorText(e) } finally { busy.value = false }
 }
@@ -36,7 +41,7 @@ function keys(event) {
     <form @submit.prevent="save"><p v-if="note" class="form-note">{{ note }}</p>
       <template v-for="field in fields" :key="field.key">
         <fieldset v-if="field.type === 'multi'"><legend>{{ field.label }}</legend><p v-if="!field.options?.length" class="muted">暂无可选项</p><div class="checkbox-grid"><label v-for="option in field.options" :key="option.value"><input v-model="values[field.key]" type="checkbox" :value="option.value" :disabled="busy" />{{ option.label }}</label></div></fieldset>
-        <label v-else>{{ field.label }}<select :aria-label="field.label" v-if="field.options" v-model="values[field.key]" :required="field.required !== false" :disabled="busy"><option value="" disabled>请选择</option><option v-for="option in field.options" :key="option.value" :value="option.value">{{ option.label }}</option></select><textarea :aria-label="field.label" v-else-if="field.type === 'textarea'" v-model="values[field.key]" :required="field.required !== false" :disabled="busy" maxlength="1000" rows="3" /><input :aria-label="field.label" v-else v-model="values[field.key]" :type="field.type || 'text'" :required="field.required !== false" :disabled="busy" :pattern="field.pattern" :min="field.min" :max="field.max" :maxlength="field.maxlength || 200" /></label>
+        <label v-else>{{ field.label }}<select :aria-label="field.label" v-if="field.options" v-model="values[field.key]" :required="field.required !== false" :disabled="busy"><option value="" disabled>请选择</option><option v-for="option in field.options" :key="option.value" :value="option.value">{{ option.label }}</option></select><textarea :aria-label="field.label" v-else-if="field.type === 'textarea'" v-model="values[field.key]" :required="field.required !== false" :disabled="busy" :maxlength="field.maxlength || 512" rows="3" /><input :aria-label="field.label" v-else v-model="values[field.key]" :type="field.type || 'text'" :required="field.required !== false" :disabled="busy" :pattern="field.pattern" :min="field.min" :max="field.max" :maxlength="field.maxlength || 200" /></label>
       </template>
       <p v-if="error" role="alert" class="app-error">{{ error }}</p><div class="modal-actions"><button type="button" class="button light" :disabled="busy" @click="emit('close')">取消</button><button type="submit" class="button primary" :disabled="busy">{{ busy ? '正在提交…' : '确认提交' }}</button></div>
     </form>

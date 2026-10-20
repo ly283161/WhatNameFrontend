@@ -1,4 +1,4 @@
-.login-stage { min-height:calc(100svh - var(--mock-banner-height, 0px)); padding:48px 32px; display:grid; place-items:center; background:#f0f1f2 }
+.login-stage { min-height:100svh; padding:48px 32px; display:grid; place-items:center; background:#f0f1f2 }
 .login-page { position:relative; display:grid; grid-template-columns:60% 40%; width:min(1180px, 100%); min-height:670px; max-width:1180px; margin:0; padding:0; background:#fff; box-shadow:0 22px 65px #263b5322; overflow:hidden }
 .login-page::after { content:''; position:absolute; right:0; bottom:0; width:135px; height:220px; background:#a3d1e9; clip-path:polygon(100% 0, 100% 100%, 0 100%); pointer-events:none }
 .login-intro { position:relative; min-height:670px; background:#2d8fc1 url('/login-city.png') center center/cover no-repeat; overflow:hidden }
@@ -35,8 +35,6 @@
 .list-error { padding:24px; display:grid; justify-items:start; gap:16px }
 .pagination { display:flex; gap:10px }
 button:disabled { cursor:not-allowed; opacity:.5 }
-.mock-banner { position:sticky; top:0; z-index:45; background:#fff1dc; color:#78552e; padding:10px 22px; font-size:12px; text-align:center; line-height:1.7 }
-.mock-banner + .shell .sidebar { top:var(--mock-banner-height, 40px) }
 .page-tabs button[aria-selected="true"] { color:#355446; border-bottom-color:#355446 }
 .inline-form, .section-heading { display:flex; align-items:center; flex-wrap:wrap; gap:12px }
 .inline-form label { display:grid; gap:7px }
@@ -55,11 +53,12 @@ button:disabled { cursor:not-allowed; opacity:.5 }
 .section-heading { margin-bottom:16px }
 .section-heading .page-tabs { margin:0 }
 .grant-controls, .result-panel { padding:24px; margin-bottom:24px; display:grid; gap:18px }
+.grant-controls > .inline-form { align-items:flex-end }
 .source-options { display:grid; gap:12px; max-height:280px; overflow:auto }
 .source-options label { display:flex; align-items:center; gap:10px }
 .action-notice { color:#315447; background:#edf3ee; padding:12px 16px; margin-bottom:16px; line-height:1.7 }
 .contract-note { padding:20px 0; color:#7c8983; line-height:1.8 }
-@media(max-width:700px) { .inline-form { width:100% } .inline-form input { min-width:0; width:100% } .grant-controls .inline-form>label { width:100% } .detail-panel dl { grid-template-columns:100px 1fr } .mock-banner { padding:8px 12px } }
+@media(max-width:700px) { .inline-form { width:100% } .inline-form input { min-width:0; width:100% } .grant-controls .inline-form>label { width:100% } .detail-panel dl { grid-template-columns:100px 1fr } }
 @media(max-width:700px) {
   .login-stage { padding:20px 16px; place-items:start center }
   .login-page { grid-template-columns:1fr; min-height:0; width:100% }
@@ -74,3 +73,54 @@ button:disabled { cursor:not-allowed; opacity:.5 }
   .login-card { padding:32px 26px 38px; margin:0 }
   .table-footer { flex-wrap:wrap; gap:12px }
 }
+
+.account-area { position:relative; margin-left:auto }
+.account-trigger { display:flex; align-items:center; gap:10px; text-align:left; padding:5px; border-radius:8px; color:#40554b }
+.account-trigger:hover { background:#f5f7f5 }
+.account-trigger .header-avatar { display:grid; place-items:center; flex:0 0 32px }
+.account-caption { max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px }
+.account-caption small { display:block; margin-top:4px; color:#87928b; font-size:10px }
+.account-menu { position:absolute; right:0; top:calc(100% + 12px); z-index:60; width:260px; max-width:calc(100vw - 36px); padding:20px; border:1px solid #e5e9e6; border-radius:10px; background:white; box-shadow:0 12px 32px #263d271a; font-size:12px }
+.account-menu dl { display:grid; grid-template-columns:70px minmax(0,1fr); gap:12px; margin:20px 0 }
+.account-menu dt { color:#849087 }
+.account-menu dd { margin:0; overflow-wrap:anywhere }
+.account-menu>.button { display:flex; align-items:center; justify-content:center; gap:8px; width:100% }
+@media(max-width:700px) { .account-caption { display:none } .account-trigger { gap:5px } }
+
+.resource-modal { width:1000px; display:flex; flex-direction:column; overflow:hidden }
+.resource-modal > .modal-heading { flex-shrink:0 }
+.resource-modal .modal-heading h2 { margin:0; font-size:18px }
+.resource-modal-body { padding:24px; min-width:0; min-height:0; overflow:auto }
+@media(max-width:700px) { .resource-modal-body { padding:16px } }
+
+.account-filters { width:100% }
+.account-filters .search-field { background:white }
+.account-filters .search-field button { padding:0; color:#a1aba3 }
+.account-filters .toolbar-summary { white-space:nowrap }
+.account-table .secondary-action { margin-left:0 }
+@media(max-width:700px) { .account-filters .search-field { width:100% } .account-filters .search-field input { min-width:0; width:100% } .account-filters .toolbar-summary { width:100% } }
+
+.app-list-pagination { display:flex; justify-content:space-between; padding:16px; gap:10px }
+.app-menu-preview { min-width:0 }
+@media(min-width:961px) {
+  .resource-layout { grid-template-columns:clamp(300px,26vw,360px) minmax(0,1fr); gap:20px }
+}
+.app-selector > button { min-height:72px }
+.app-selector > button > div { min-width:0 }
+.app-selector > button > svg { flex-shrink:0 }
+.app-selector strong { font-size:12px; line-height:1.55; overflow-wrap:anywhere }
+.app-selector small { font-size:10px; line-height:1.5 }
+.app-menu-preview .resource-heading { gap:16px; flex-wrap:wrap }
+.app-menu-preview .heading-actions { gap:8px; flex-wrap:nowrap; margin-left:auto }
+.app-menu-preview .heading-actions .button { height:36px; min-height:36px; min-width:104px; padding:0 12px; border:1px solid transparent; border-radius:6px; font-size:12px; gap:6px }
+.app-menu-preview .heading-actions .button.light { border-color:#e1e7e3 }
+.app-menu-preview .heading-actions .button svg { flex-shrink:0 }
+@media(max-width:700px) {
+  .app-menu-preview .heading-actions { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); width:100% }
+  .app-menu-preview .heading-actions .button { min-width:0; width:100%; padding:0 8px; font-size:11px }
+}
+.app-menu-preview .resource-title strong { overflow-wrap:anywhere }
+.app-menu-preview .api-details>p { padding:12px 0 0 47px }
+.department-actions { display:flex; align-items:center; gap:12px; flex-wrap:wrap; justify-content:flex-end }
+@media(max-width:1180px) { .department-actions { gap:8px } }
+@media(max-width:700px) { .resource-layout { grid-template-columns:1fr } .department-grid>div { flex-wrap:wrap } .department-actions { width:100% } .app-menu-preview .resource-title { flex-wrap:wrap } }
