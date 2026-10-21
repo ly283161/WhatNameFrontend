@@ -14,7 +14,7 @@ try {
   if (account && ['USERNAME', 'PHONE'].includes(account.loginType) && typeof account.identifier === 'string') {
     loginType.value = account.loginType; identifier.value = account.identifier; remember.value = true
   }
-} catch { /* Remembering an account is optional when browser storage is unavailable. */ }
+} catch { /* 浏览器存储不可用时跳过账号记忆。 */ }
 async function submit() {
   if (busy.value) return
   error.value = ''
@@ -25,7 +25,7 @@ async function submit() {
   try {
     await login(credentials)
     if (session.userId) {
-      try { remember.value ? localStorage.setItem('iam-remembered-account', JSON.stringify({ loginType: credentials.loginType, identifier: credentials.identifier })) : localStorage.removeItem('iam-remembered-account') } catch { /* Login does not depend on optional preferences. */ }
+      try { remember.value ? localStorage.setItem('iam-remembered-account', JSON.stringify({ loginType: credentials.loginType, identifier: credentials.identifier })) : localStorage.removeItem('iam-remembered-account') } catch { /* 账号记忆设置失败不影响登录。 */ }
     }
   } catch (failure) { error.value = failure.message + (failure.requestId ? `（请求编号：${failure.requestId}）` : '') }
   finally { credentials.password = ''; busy.value = false }

@@ -271,14 +271,18 @@ test('旧范围的账号列表晚返回时，不重新显示旧用户信息', as
     if (call.path === '/users' && call.query.get('keyword') === '等待旧查询' && !held) { held = true; await gate; return { data: slice([person], call.query) } }
   })
   await login(page); await nav(page, '用户账号')
+  const completed = new Set()
+  page.on('requestfinished', request => completed.add(request))
+  page.on('requestfailed', request => completed.add(request))
+  const pending = page.waitForRequest(request => new URL(request.url()).searchParams.get('keyword') === '等待旧查询')
   await page.getByRole('textbox', { name: '搜索姓名、账号或工号' }).fill('等待旧查询')
   await page.getByRole('button', { name: '查询', exact: true }).click()
   await expect.poll(() => held).toBe(true)
   state.roots = ['99']; state.users = []
   await page.evaluate(() => window.dispatchEvent(new Event('focus')))
   await expect(page.getByText('共 0 条 · 第 1 页')).toBeVisible()
-  const response = page.waitForResponse(r => new URL(r.url()).searchParams.get('keyword') === '等待旧查询')
-  release(); await response
+  const oldRequest = await pending
+  release(); await expect.poll(() => completed.has(oldRequest)).toBe(true)
   await page.evaluate(() => new Promise(requestAnimationFrame))
   await expect(page.getByRole('cell', { name: person.realName, exact: true })).toHaveCount(0)
   await expect(page.getByText('共 0 条 · 第 1 页')).toBeVisible()
@@ -461,9 +465,12 @@ test('本人管理范围展示身份和部门名称，可反复收起展开并�
     await scope.getByRole('button', { name: '展开', exact: true }).click()
     await expect(scope.locator('dl')).toBeVisible()
   }
+  const adminReads = state.calls.filter(call => call.path === '/admins').length
   state.level = 2
   await page.evaluate(() => window.dispatchEvent(new Event('focus')))
   await expect(scope).toContainText('部门管理员（二级）')
+  await expect(page.getByText('共 0 条 · 第 1 页')).toBeVisible()
+  expect(state.calls.filter(call => call.path === '/admins')).toHaveLength(adminReads + 1)
   await expect(scope).toContainText('财务管理部及其下属部门')
   await expect(scope).not.toContainText('全集团')
   state.roots = ['99']
@@ -538,4 +545,39 @@ test.describe('授权历史时间范围', () => {
     await expect(modal.locator('tbody tr')).toHaveCount(4)
     expect(state.unexpected).toEqual([])
   })
+})
+
+
+test('应用菜单预览共用读取，失败可重试，修改映射后读取新数据', async ({ page }) => {
+  const resources = [{ apiId: '51', httpMethod: 'GET', apiPath: '/first', status: 1 }, { apiId: '52', httpMethod: 'GET', apiPath: '/second', status: 1 }]
+  let mapped = ['51'], version = 'v1', attempts = 0
+  const state = await backend(page, ['IAM_RESOURCES_VIEW', 'IAM_RESOURCES_WRITE', 'IAM_ADMINS_VIEW'], call => {
+    if (call.path === '/applications/18/menus') return { data: { menus: ['25', '26'].map(menuId => ({ menuId, menuName: '菜单' + menuId, menuType: 2, status: 1 })) } }
+    if (call.path === '/applications/18/apis') {
+      if (call.query.get('pageSize') === '500' && ++attempts === 1) return { abort: true }
+      return { data: slice(resources, call.query) }
+    }
+    if (/^\/menus\/(25|26)\/apis$/.test(call.path)) {
+      if (call.method === 'PUT') { expect(call.body.expectedVersion).toBe(version); mapped = call.body.apiIds; version = 'v2' }
+      return { data: { apiIds: call.path.includes('/25/') ? mapped : ['51'], mappingVersion: version } }
+    }
+  })
+  await login(page); await nav(page, '应用管理')
+  const rows = page.locator('.app-menu-preview .resource-item')
+  await expect(rows.locator('.resource-title > .tag')).toHaveText(['1 个 API', '1 个 API'])
+  await rows.nth(0).locator('summary').click()
+  await expect(rows.nth(0).locator('.app-error')).toBeVisible()
+  await rows.nth(0).locator('summary').click(); await rows.nth(0).locator('summary').click()
+  await expect(rows.nth(0).locator('code')).toContainText('/first')
+  await rows.nth(1).locator('summary').click()
+  await expect(rows.nth(1).locator('code')).toContainText('/first')
+  expect(attempts).toBe(2)
+  expect(state.calls.filter(call => /^\/menus\/\d+\/apis$/.test(call.path))).toHaveLength(2)
+  await rows.nth(0).getByRole('button', { name: '编辑映射' }).click()
+  await page.locator('.stage-form').getByRole('checkbox', { name: 'GET /first' }).uncheck()
+  await page.locator('.stage-form').getByRole('checkbox', { name: 'GET /second' }).check()
+  await confirm(page); await expect(page.locator('.stage-form')).toHaveCount(0)
+  await expect(rows.nth(0).locator('code')).toContainText('/second')
+  expect(state.calls.some(call => call.method === 'PUT' && call.path === '/menus/25/apis')).toBe(true)
+  expect(state.unexpected).toEqual([])
 })

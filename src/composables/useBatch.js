@@ -2,7 +2,7 @@ import { reactive, onBeforeUnmount, watch } from 'vue'
 import { api, session } from '../session.js'
 import { ApiError } from '../api/client.js'
 import { count, pageResult, recordId } from '../api/contracts.js'
-import { errorText, id } from './useList.js'
+import { errorText, id } from '../utils/formatters.js'
 
 const terminal = value => ['COMPLETED', 'PARTIAL_SUCCESS', 'FAILED'].includes(value)
 export function useBatch() {
@@ -12,6 +12,7 @@ export function useBatch() {
   const state = reactive({ result: null, busy: false, error: '', querying: false, canRetry: false, updatedAt: '',
     async submit(command, { fresh = false } = {}) {
       const body = JSON.parse(JSON.stringify(command))
+      // 固定目标排序后生成请求签名，相同提交内容复用幂等键。
       body.targets.sort((a, b) => BigInt(a.userId) < BigInt(b.userId) ? -1 : BigInt(a.userId) > BigInt(b.userId) ? 1 : 0)
       const signature = JSON.stringify(body)
       if (fresh || !keys.has(signature)) keys.set(signature, crypto.randomUUID())
@@ -24,7 +25,7 @@ export function useBatch() {
         state.result = { ...data, total: count(data.total), items: data.items || [] }
         state.canRetry = terminal(data.processingStatus) && count(data.failed ?? 0) > 0
         state.updatedAt = new Date().toLocaleTimeString('zh-CN')
-        try { sessionStorage.setItem(storageKey(), data.batchId) } catch { /* Optional task lookup only. */ }
+        try { sessionStorage.setItem(storageKey(), data.batchId) } catch { /* 任务编号仅用于恢复查询，存储失败不影响已受理的任务。 */ }
         schedule()
         return data
       } finally { state.busy = false }
@@ -57,6 +58,7 @@ export function useBatch() {
       original = null; state.result = { batchId, processingStatus: 'PENDING', items: [] }
       await state.load(1)
     },
+    // 读取所有结果页，仅提取原提交中已确认失败的目标用于重试。
     async failedCommand() {
       if (!state.canRetry || !original || !state.result) throw new ApiError('仅可在原提交页面重试已确认失败的目标')
       const batchId = state.result.batchId, failedIds = new Set(); let total

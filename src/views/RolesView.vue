@@ -1,8 +1,10 @@
 <script setup>
+import { forEachConcurrent } from '../utils/concurrent.js'
 import { api } from '../session.js'
 import { canGlobal as can } from '../access.js'
 import { readAll } from '../api/contracts.js'
-import { useList, id } from '../composables/useList.js'
+import { useList } from '../composables/useList.js'
+import { id } from '../utils/formatters.js'
 import { useActions } from '../composables/useActions.js'
 import RecordTable from '../components/RecordTable.vue'
 import FormDialog from '../components/FormDialog.vue'
@@ -13,10 +15,10 @@ function edit(row) { perform(async () => { const data = await api(`/roles/${id(r
 function configure(row) { perform(async () => {
   const current = await api(`/roles/${id(row.roleId)}/menus`)
   const apps = await readAll(api, '/applications')
-  const resources = []; let next = 0
-  await Promise.all(Array.from({ length: Math.min(4, apps.length) }, async () => {
-    while (next < apps.length) { const app = apps[next++]; resources.push(await api('/applications/' + id(app.appId) + '/menus')) }
-  }))
+  const resources = []
+  await forEachConcurrent(apps, async app => {
+    resources.push(await api('/applications/' + id(app.appId) + '/menus'))
+  })
   const options = resources.flatMap(r => r.menus.filter(m => m.menuType === 2).map(m => ({ value: m.menuId, label: m.menuName || m.menuCode || m.menuId })))
   for (const menuId of current.menuIds) if (!options.some(o => o.value === menuId)) options.push({ value: menuId, label: `已有菜单 ${menuId}` })
   dialog.value = { title: `配置菜单 · ${row.roleName}`, initial: { menuIds: current.menuIds }, fields: [{ key: 'menuIds', label: '角色菜单（取消全部将清空授权）', type: 'multi', options }], note: '角色权限取菜单并集；保存前由服务端核验集合版本。', submit: async body => { if (!can('IAM_ROLES_WRITE')) throw new Error('当前没有一级管理员配置资格'); if (!current.permissionRevision) throw new Error('缺少角色菜单版本，无法保存'); await api(`/roles/${id(row.roleId)}/menus`, { method: 'PUT', body: { menuIds: body.menuIds, expectedVersion: current.permissionRevision } }); await list.load(list.page) } }

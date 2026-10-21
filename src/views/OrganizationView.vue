@@ -1,9 +1,11 @@
 <script setup>
 import { ref, watch, nextTick, onBeforeUnmount } from 'vue'
+import { trapTab } from '../utils/dialogFocus.js'
 import { X, Building2 } from 'lucide-vue-next'
 import { api, session } from '../session.js'
 import { can } from '../access.js'
-import { useList, id } from '../composables/useList.js'
+import { useList } from '../composables/useList.js'
+import { id } from '../utils/formatters.js'
 import { useActions } from '../composables/useActions.js'
 import RecordTable from '../components/RecordTable.vue'
 import FormDialog from '../components/FormDialog.vue'
@@ -27,11 +29,7 @@ watch(selectedDept, async value => {
 onBeforeUnmount(() => { if (previousOverflow !== undefined) document.body.style.overflow = previousOverflow })
 function peopleKeys(event) {
   if (event.key === 'Escape') { event.preventDefault(); closePeople(); return }
-  if (event.key !== 'Tab') return
-  const controls = [...peoplePanel.value.querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled),a[href]')]
-  const first = controls[0], last = controls.at(-1)
-  if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus() }
-  else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
+  trapTab(event, peoplePanel.value, 'button:not(:disabled),input:not(:disabled),select:not(:disabled),a[href]')
 }
 </script>
 <template><div class="page-heading"><div><h1>人员与组织变动</h1><p>查看人员变动与管理部门冻结</p></div></div><div class="page-tabs" role="tablist" aria-label="变动管理"><button role="tab" :aria-selected="tab === 'people'" @click="tab = 'people'">人员变动</button><button role="tab" :aria-selected="tab === 'departments'" @click="tab = 'departments'">部门冻结</button></div><p v-if="error" role="alert" class="app-error">{{ error }}</p><p v-if="notice" role="status" class="action-notice">{{ notice }}</p>

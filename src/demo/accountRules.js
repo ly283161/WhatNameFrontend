@@ -7,7 +7,7 @@ export function normalizeUser(user) {
   const normalized = { ...user, source: manual ? '手动' : 'HR', personType: user.personType || (manual ? '' : user.type === '外包员工' ? '外包' : '正式') }
   if (manual) normalized.employee = ''
   delete normalized.type
-  // Legacy role associations have no reliable department provenance: preserve them.
+  // 无可靠部门来源的角色关系保留原授权，避免错误回收。
   normalized.roleGrants = user.roleGrants || (user.roles || []).map((role, i) => ({ id: `${user.id}-legacy-${i}`, role, basisType: '历史授权', basisId: `legacy-${i}`, status: '有效' }))
   normalized.roles = effectiveRoles(normalized)
   return normalized
@@ -33,7 +33,7 @@ export function updateRoleAuthorization(user, { role, mode, sourceType, business
 export function applyHrTransfer(user, event) {
   if (event.processed) return null
   const affected = user.roleGrants.filter(g => g.status === '有效' && ['部门', '岗位', '人员调职'].includes(g.basisType) && (g.department === event.from || (event.oldPositionId && g.basisId === event.oldPositionId)))
-  // First restrict the invalidated basis, then reclaim only that basis.
+  // 先限制失效的授权依据，再仅回收该依据对应的授权。
   affected.forEach(g => { g.status = '受限' })
   user.roles = effectiveRoles(user)
   const restrictedRoles = [...user.roles]
@@ -53,7 +53,7 @@ export async function phoneFingerprint(phone) {
   return [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('')
 }
 
-// Local prototype of the server response. Production creates the account server-side.
+// 手机号按摘要判重，生成无工号且未设密的临时账号。
 export async function createTemporaryAccount({ name, phone, dept, purpose }, users) {
   const fingerprint = await phoneFingerprint(phone)
   if (users.some(u => u.phoneFingerprint === fingerprint)) throw new Error('手机号已存在，请使用全局唯一的手机号')

@@ -1,8 +1,10 @@
 <script setup>
+import { forEachConcurrent } from '../utils/concurrent.js'
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { api, session } from '../session.js'
 import { can } from '../access.js'
-import { useList, id, errorText } from '../composables/useList.js'
+import { useList } from '../composables/useList.js'
+import { id, errorText } from '../utils/formatters.js'
 import RecordTable from '../components/RecordTable.vue'
 import ContentDialog from '../components/ContentDialog.vue'
 import AuditIdentity from '../components/AuditIdentity.vue'
@@ -17,7 +19,8 @@ const candidatesShown = ref(false), hideRecords = ref(false)
 const candidates = useList('/users', () => ({ keyword: searchText.value.trim() }), { auto: false })
 let searchSequence = 0, searchDisposed = false
 const category = computed(() => categories.find(item => item.key === tab.value))
-const list = useList(() => '/audit/' + tab.value, () => tab.value === 'operations' ? {} : { userId: activeUserId.value })
+// 权限范围变化时，先重置筛选条件，再重新加载日志。
+const list = useList(() => '/audit/' + tab.value, () => tab.value === 'operations' ? {} : { userId: activeUserId.value }, { reloadOnAccessChange: false })
 const people = ref({})
 let peopleController, peopleSequence = 0
 async function readPeople(records) {
@@ -27,16 +30,12 @@ async function readPeople(records) {
   people.value = {}
   if (!can('IAM_USERS_VIEW')) return
   people.value = Object.fromEntries(ids.map(userId => [userId, { loading: true }]))
-  let cursor = 0
-  await Promise.all(Array.from({ length: Math.min(4, ids.length) }, async () => {
-    while (cursor < ids.length && current === peopleSequence) {
-      const userId = ids[cursor++]
-      try {
-        const user = await api('/users/' + id(userId), { signal, refreshAccessOnError: false })
-        if (current === peopleSequence) people.value[userId] = { user }
-      } catch (e) { if (current === peopleSequence) people.value[userId] = { error: errorText(e) } }
-    }
-  }))
+  await forEachConcurrent(ids, async userId => {
+    try {
+      const user = await api('/users/' + id(userId), { signal, refreshAccessOnError: false })
+      if (current === peopleSequence) people.value[userId] = { user }
+    } catch (e) { if (current === peopleSequence) people.value[userId] = { error: errorText(e) } }
+  }, () => current === peopleSequence)
 }
 watch(() => list.rows, records => { void readPeople(records) })
 const operationNames = {

@@ -1,8 +1,9 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
+import { trapTab } from '../utils/dialogFocus.js'
 import { X } from 'lucide-vue-next'
 import { refreshAccess, session } from '../session.js'
-import { errorText } from '../composables/useList.js'
+import { errorText } from '../utils/formatters.js'
 const props = defineProps({ title: String, fields: Array, initial: Object, submit: Function, note: String, allowed: { type: Boolean, default: true } })
 const emit = defineEmits(['close', 'saved'])
 const values = ref(JSON.parse(JSON.stringify(props.initial || {}))), busy = ref(false), error = ref(''), panel = ref()
@@ -29,11 +30,7 @@ async function save() {
 }
 function keys(event) {
   if (event.key === 'Escape' && !busy.value) emit('close')
-  if (event.key !== 'Tab') return
-  const controls = [...panel.value.querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled)')]
-  const first = controls[0], last = controls.at(-1)
-  if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus() }
-  else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
+  trapTab(event, panel.value)
 }
 </script>
 <template>

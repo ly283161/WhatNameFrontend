@@ -1,11 +1,14 @@
 <script setup>
+import { forEachConcurrent } from '../utils/concurrent.js'
 import { computed, reactive, ref, onMounted, watch, onBeforeUnmount } from 'vue'
 import { Search } from 'lucide-vue-next'
 import { api, session } from '../session.js'
 import { can } from '../access.js'
 import { readAll, recordId } from '../api/contracts.js'
-import { useList, id, errorText } from '../composables/useList.js'
+import { useList } from '../composables/useList.js'
+import { id, errorText } from '../utils/formatters.js'
 import { useActions } from '../composables/useActions.js'
+import { useDebouncedSearch } from '../composables/useDebouncedSearch.js'
 import { useBatch } from '../composables/useBatch.js'
 import RecordTable from '../components/RecordTable.vue'
 import ContentDialog from '../components/ContentDialog.vue'
@@ -25,20 +28,17 @@ function resetMultiHistory() {
   historySequence++; historyController?.abort(); historyCache = null
   Object.assign(multiHistory, { rows: [], total: 0, page: 1, busy: false, error: '' })
 }
+// 后端每次按一个用户查询，多人结果合并排序后在本地分页。
 async function loadMultiHistory(page = 1) {
   if (historyCache) { multiHistory.rows = historyCache.slice((page - 1) * 20, page * 20); multiHistory.page = page; return }
   historyController?.abort(); historyController = new AbortController()
   const current = ++historySequence, signal = historyController.signal
   const users = [...historyUserIds.value], role = historyRoleId.value, range = { ...historyRange.value }, results = new Array(users.length)
   Object.assign(multiHistory, { rows: [], total: 0, busy: true, error: '' })
-  let cursor = 0
   try {
-    await Promise.all(Array.from({ length: Math.min(4, users.length) }, async () => {
-      while (cursor < users.length && current === historySequence && !signal.aborted) {
-        const index = cursor++
-        results[index] = await readAll(api, '/grants/history', { userId: users[index], roleId: role, ...range }, signal)
-      }
-    }))
+    await forEachConcurrent(users, async (userId, index) => {
+      results[index] = await readAll(api, '/grants/history', { userId, roleId: role, ...range }, signal)
+    }, () => current === historySequence && !signal.aborted)
     if (current !== historySequence || signal.aborted) return
     historyCache = results.flat().sort((a, b) => (Date.parse(b.occurredAt) || 0) - (Date.parse(a.occurredAt) || 0) || String(b.eventId).localeCompare(String(a.eventId)))
     multiHistory.total = historyCache.length
@@ -81,36 +81,30 @@ onBeforeUnmount(resetMultiHistory)
 const historyRows = computed(() => ({ ...history.value, rows: history.value.rows.map(r => ({ ...r, key: [r.eventId, r.userId, r.roleId, r.grantSourceId, r.operation].join(':') })) }))
 const { dialog, error, notice, busy, perform } = useActions()
 const batch = useBatch(), delegable = ref([]), roleNames = ref({}), sourceRows = ref([]), selectedSources = ref([])
-const chosen = selected
 const result = computed(() => batch.result), seenUsers = new Map()
 let sourceSequence = 0, roleSequence = 0, disposed = false, sourceTimer, sourcesReady = false
 onBeforeUnmount(() => { disposed = true; sourceSequence++; roleSequence++; clearTimeout(sourceTimer) })
 watch(() => list.rows, rows => rows.forEach(u => seenUsers.set(u.userId, u)), { deep: true })
-watch([chosen, roleId, operation], () => {
+watch([selected, roleId, operation], () => {
   sourceSequence++; sourcesBusy.value = false; sourcesReady = false; sourceRows.value = []; selectedSources.value = []; clearTimeout(sourceTimer)
-  if (operation.value === 'REVOKE' && chosen.value.length && roleId.value) sourceTimer = setTimeout(() => { void readSources() }, 350)
+  if (operation.value === 'REVOKE' && selected.value.length && roleId.value) sourceTimer = setTimeout(() => { void readSources() }, 350)
 }, { deep: true, flush: 'sync' })
-const selectedNames = computed(() => chosen.value.slice(0, 8).map(value => seenUsers.get(value)?.realName || value).join('、') + (chosen.value.length > 8 ? ' 等' : ''))
-let userRolesSequence = 0, userRolesController, searchTimer
-function search() { clearTimeout(searchTimer); void list.load() }
-watch(keyword, () => { clearTimeout(searchTimer); searchTimer = setTimeout(search, 350) })
+const selectedNames = computed(() => selected.value.slice(0, 8).map(value => seenUsers.get(value)?.realName || value).join('、') + (selected.value.length > 8 ? ' 等' : ''))
+let userRolesSequence = 0, userRolesController
+const search = useDebouncedSearch(keyword, () => list.load())
 async function readUserRoles(rows) {
   userRolesController?.abort(); userRolesController = new AbortController()
   const signal = userRolesController.signal, current = ++userRolesSequence
   rolesByUser.value = Object.fromEntries(rows.map(row => [row.userId, { loading: true, items: [] }]))
-  let next = 0
-  await Promise.all(Array.from({ length: Math.min(4, rows.length) }, async () => {
-    while (next < rows.length && current === userRolesSequence && !disposed) {
-      const row = rows[next++]
-      try {
-        const data = await api('/users/' + id(row.userId) + '/roles', { signal })
-        if (current === userRolesSequence && !disposed) rolesByUser.value[row.userId] = { items: data.roles.filter(role => role.active) }
-      } catch (e) { if (current === userRolesSequence && !disposed) rolesByUser.value[row.userId] = { error: errorText(e), items: [] } }
-    }
-  }))
+  await forEachConcurrent(rows, async row => {
+    try {
+      const data = await api('/users/' + id(row.userId) + '/roles', { signal })
+      if (current === userRolesSequence && !disposed) rolesByUser.value[row.userId] = { items: data.roles.filter(role => role.active) }
+    } catch (e) { if (current === userRolesSequence && !disposed) rolesByUser.value[row.userId] = { error: errorText(e), items: [] } }
+  }, () => current === userRolesSequence && !disposed)
 }
 watch(() => list.rows, rows => { void readUserRoles(rows) })
-onBeforeUnmount(() => { userRolesSequence++; userRolesController?.abort(); clearTimeout(searchTimer) })
+onBeforeUnmount(() => { userRolesSequence++; userRolesController?.abort() })
 const statusName = value => ({ PENDING: '排队中', PROCESSING: '处理中', COMPLETED: '全部完成', PARTIAL_SUCCESS: '部分成功', FAILED: '失败', APPLIED: '已完成' }[value] || value)
 async function loadRoles() {
   if (!can('IAM_GRANTS_WRITE')) return
@@ -129,19 +123,15 @@ watch(() => session.accessVersion, () => {
 })
 async function readSources() {
   clearTimeout(sourceTimer)
-  if (!roleId.value || !chosen.value.length || operation.value !== 'REVOKE') return
-  const current = ++sourceSequence, users = [...chosen.value], role = roleId.value, responses = new Array(users.length)
+  if (!roleId.value || !selected.value.length || operation.value !== 'REVOKE') return
+  const current = ++sourceSequence, users = [...selected.value], role = roleId.value, responses = new Array(users.length)
   sourcesBusy.value = true
   try {
     users.forEach(recordId)
-    let next = 0
-    await Promise.all(Array.from({ length: Math.min(4, users.length) }, async () => {
-      while (next < users.length && current === sourceSequence && !disposed) {
-        const index = next++, userId = users[index]
-        const data = await api('/users/' + id(userId) + '/roles/' + id(role) + '/sources')
-        responses[index] = data.sources.filter(s => s.active).map(s => ({ ...s, userId }))
-      }
-    }))
+    await forEachConcurrent(users, async (userId, index) => {
+      const data = await api('/users/' + id(userId) + '/roles/' + id(role) + '/sources')
+      responses[index] = data.sources.filter(s => s.active).map(s => ({ ...s, userId }))
+    }, () => current === sourceSequence && !disposed)
     if (current !== sourceSequence || disposed) return
     sourceRows.value = responses.flat(); sourcesReady = true
     const counts = new Map()
@@ -152,13 +142,15 @@ async function readSources() {
 }
 function command() {
   if (!can('IAM_GRANTS_WRITE')) throw new Error('当前没有权限分配资格')
-  if (!chosen.value.length || !roleId.value) throw new Error('请先选择用户和角色')
-  recordId(roleId.value); chosen.value.forEach(recordId)
+  if (!selected.value.length || !roleId.value) throw new Error('请先选择用户和角色')
+  recordId(roleId.value); selected.value.forEach(recordId)
   if (!reason.value.trim()) throw new Error('请填写操作原因')
   if (operation.value === 'GRANT' && !sourceRef.value.trim()) throw new Error('请填写真实业务依据编号')
-  const targets = operation.value === 'GRANT' ? chosen.value.map(userId => ({ userId, sourceType: 'MANUAL', sourceRef: sourceRef.value.trim() })) : sourceRows.value.filter(s => selectedSources.value.includes(s.grantSourceId)).map(s => ({ userId: s.userId, grantSourceId: s.grantSourceId }))
-  if (!targets.length || chosen.value.some(userId => !targets.some(t => t.userId === userId))) throw new Error('请为每位用户选择一条有效回收依据；无有效依据的用户请取消选择')
-  if (new Set(targets.map(t => t.userId)).size !== targets.length) throw new Error('后端要求同一批次每位用户仅有一个目标，请为每人选择一条依据；其他依据可分次回收')
+  const selectedSourceIds = new Set(selectedSources.value)
+  const targets = operation.value === 'GRANT' ? selected.value.map(userId => ({ userId, sourceType: 'MANUAL', sourceRef: sourceRef.value.trim() })) : sourceRows.value.filter(s => selectedSourceIds.has(s.grantSourceId)).map(s => ({ userId: s.userId, grantSourceId: s.grantSourceId }))
+  const targetUsers = new Set(targets.map(target => target.userId))
+  if (!targets.length || selected.value.some(userId => !targetUsers.has(userId))) throw new Error('请为每位用户选择一条有效回收依据；无有效依据的用户请取消选择')
+  if (targetUsers.size !== targets.length) throw new Error('后端要求同一批次每位用户仅有一个目标，请为每人选择一条依据；其他依据可分次回收')
   return { operation: operation.value, roleId: roleId.value, targets, reason: reason.value.trim(), dryRun: false }
 }
 function confirmBatch(body, retry = false) {
@@ -182,7 +174,7 @@ function retryFailed() { perform(async () => confirmBatch(await batch.failedComm
     <label v-if="can('IAM_GRANTS_WRITE')">操作<select v-model="operation" aria-label="操作"><option value="GRANT">授予角色</option><option value="REVOKE">回收角色</option></select></label>
     <label v-if="can('IAM_GRANTS_WRITE')">角色<select v-model="roleId" aria-label="角色"><option value="" disabled>请选择角色</option><option v-for="value in delegable" :key="value" :value="value">{{ roleNames[value] || ('角色 ' + value) }}</option></select></label>
     <label v-if="can('IAM_GRANTS_WRITE') && operation === 'GRANT'">业务依据编号<input v-model="sourceRef" aria-label="业务依据编号" maxlength="128" /></label><label v-if="can('IAM_GRANTS_WRITE')">操作原因<input v-model="reason" aria-label="操作原因" maxlength="512" /></label><div class="grant-buttons"><button v-if="can('IAM_GRANTS_WRITE')" class="button primary" :disabled="busy || batch.busy || batch.querying || sourcesBusy" @click="prepare">提交</button><button v-if="can('IAM_GRANTS_VIEW')" class="button light" @click="openHistory">查询授权历史</button></div></div>
-    <p>已选 {{ chosen.length }} 位用户 {{ selectedNames }}</p>
+    <p>已选 {{ selected.length }} 位用户 {{ selectedNames }}</p>
     <div v-if="operation === 'REVOKE'" class="source-options"><label v-for="source in sourceRows" :key="source.userId + ':' + source.grantSourceId"><input v-model="selectedSources" type="checkbox" :value="source.grantSourceId" />{{ seenUsers.get(source.userId)?.realName || source.userId }} · {{ source.sourceType }} · {{ source.sourceRef }}</label><p v-if="sourcesBusy" class="muted">正在读取回收依据…</p><p v-else-if="!sourceRows.length" class="muted">选择用户和角色后自动读取回收依据。</p></div>
   </section>
   <AccountTable v-if="can('IAM_USERS_VIEW')" v-model:selected="selected" :state="list" :departments="depts.rows" :roles="rolesByUser" :role-names="roleNames"><template #toolbar><form class="inline-form account-filters" @submit.prevent="search"><div class="search-field"><button type="submit" aria-label="查询" :disabled="list.busy"><Search :size="17" /></button><input v-model="keyword" aria-label="搜索授权用户" placeholder="搜索姓名、账号或工号" maxlength="64" /></div><select v-if="depts.rows.length" v-model="deptFilter" aria-label="筛选部门" @change="search"><option value="">全部部门</option><option v-for="d in depts.rows" :key="d.deptId" :value="d.deptId">{{ d.deptName }}</option></select><select v-model="statusFilter" aria-label="筛选账号状态" @change="search"><option value="">全部状态</option><option :value="1">可用</option><option :value="2">暂停</option><option :value="3">离职</option></select><span class="toolbar-summary">共 {{ list.total }} 个账号</span></form></template></AccountTable>

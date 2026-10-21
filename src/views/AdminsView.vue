@@ -3,12 +3,14 @@ import { ref, computed, watch } from 'vue'
 import { api, session } from '../session.js'
 import { can } from '../access.js'
 import { readAll } from '../api/contracts.js'
-import { useList, id } from '../composables/useList.js'
+import { useList } from '../composables/useList.js'
+import { id } from '../utils/formatters.js'
 import { useActions } from '../composables/useActions.js'
 import RecordTable from '../components/RecordTable.vue'
 import FormDialog from '../components/FormDialog.vue'
 import DetailPanel from '../components/DetailPanel.vue'
-const deptId = ref(''), list = useList('/admins', () => ({ deptId: deptId.value }))
+// 权限范围变化时，先清空部门筛选，再重新加载管理员列表。
+const deptId = ref(''), list = useList('/admins', () => ({ deptId: deptId.value }), { reloadOnAccessChange: false })
 const departments = useList('/departments', () => ({ includeDescendants: true }), { paginated: false, auto: can('IAM_DEPTS_VIEW') })
 watch(() => session.accessVersion, () => { deptId.value = ''; void list.load() })
 const { dialog, error, notice, busy, perform, saved } = useActions()

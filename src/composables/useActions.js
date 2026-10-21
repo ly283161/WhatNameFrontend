@@ -1,6 +1,6 @@
 import { ref, watch } from 'vue'
 import { session } from '../session.js'
-import { errorText } from './useList.js'
+import { errorText } from '../utils/formatters.js'
 export function useActions() {
   const dialog = ref(null), error = ref(''), notice = ref(''), busy = ref(false)
   watch(() => session.accessVersion, () => { dialog.value = null; notice.value = '' })

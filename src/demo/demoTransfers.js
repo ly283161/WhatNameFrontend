@@ -1,4 +1,4 @@
-// Temporary fixtures. Only these demo people and their transfer records reset on a new build.
+// 构建标识变化时，仅重置指定人员及其调岗记录。
 export function resetDemoTransfers(storage, buildId, seedUsers, seedChanges) {
   if (storage.getItem('access-demo-build') === buildId) return
   const read = (key, fallback) => {

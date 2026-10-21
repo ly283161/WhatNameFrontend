@@ -34,7 +34,7 @@ const depts = ['信息技术部','人力资源部','财务部','运营管理部'
 const allMenus = computed(()=>[...new Set(apps.value.flatMap(a=>a.menus.map(m=>m.name)))])
 const activeApp = ref('OA'), activeResource = computed(()=>apps.value.find(a=>a.code===activeApp.value)||apps.value[0])
 const changeTab = ref('people')
-// Mock of the current administrator context returned by the server.
+// 管理员上下文用于确定可操作的部门范围。
 const administrator = ref(stored('access-administrator', { id:'admin-csy', departments:depts, grantableRoles:['普通员工','系统管理员','人事专员','财务专员','运维工程师'] }))
 const grantableRoles = computed(()=>roles.value.filter(r=>administrator.value.grantableRoles.includes(r.name)))
 const roleChoice = ref('普通员工'), transferBasisIds = ref([]), form = ref({})

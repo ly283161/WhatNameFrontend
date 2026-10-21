@@ -8,7 +8,7 @@ export const pages = [
   { id: 'admins', label: '管理员管理', code: 'IAM_ADMINS_VIEW', path: '/admins' },
   { id: 'audit', label: '操作日志', code: 'IAM_AUDIT_VIEW', path: '/audit' },
 ]
-// UI visibility only. Each backend endpoint must independently enforce its permission.
+// 前端权限控制入口显示，接口访问权限由后端独立校验。
 export const can = code => !session.accessError && session.menus.some(menu => menu.menuCode === code && menu.navigationOnly !== true && menu.menuType !== 1)
 export const canVisit = page => can(page.code)
 export const canGlobal = code => can(code) && session.scope?.appointed === true && session.scope.adminLevel === 1

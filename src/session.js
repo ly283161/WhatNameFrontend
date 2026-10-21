@@ -2,6 +2,7 @@ import { reactive } from 'vue'
 import { ApiError, createApiClient } from './api/client.js'
 
 export const session = reactive({ userId: null, accountLabel: '', menus: [], scope: null, accessError: '', accessBusy: false, accessVersion: 0, notice: '' })
+// 令牌仅保存在内存，会话代次用于丢弃退出或重新登录前的异步结果。
 let accessToken = null, expiryTimer, generation = 0, accessRequest = null
 function clearSession(notice = '') {
   generation++; accessToken = null; clearTimeout(expiryTimer); accessRequest = null
@@ -21,6 +22,7 @@ function validateMenus(data, appCode) {
 }
 export async function refreshAccess() {
   if (!accessToken) return false
+  // 同时触发的权限刷新共用一个请求，避免重复读取。
   if (accessRequest) return accessRequest
   const attempt = generation
   const request = (async () => {

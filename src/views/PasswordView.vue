@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onBeforeUnmount } from 'vue'
 import { api } from '../session.js'
-import { errorText } from '../composables/useList.js'
+import { errorText } from '../utils/formatters.js'
 defineEmits(['back'])
 const purpose = ref('RESET_PASSWORD'), phone = ref(''), code = ref(''), password = ref(''), confirm = ref(''), busy = ref(false), cooldown = ref(0), error = ref(''), notice = ref('')
 let timer

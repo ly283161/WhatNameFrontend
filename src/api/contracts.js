@@ -9,14 +9,10 @@ export function pageResult(data, page, pageSize = 20, collection = 'items') {
   if (!data || !Array.isArray(data[collection]) || data.page !== page || data.pageSize !== pageSize) throw new ApiError('列表响应不符合接口约定')
   return { ...data, total: count(data.total, '总数') }
 }
+// ID 按十进制字符串校验，避免大整数转换为 Number 后丢失精度。
 export function recordId(value) {
   if (typeof value !== 'string' || !/^[1-9]\d{0,18}$/.test(value) || BigInt(value) > 9223372036854775807n) throw new ApiError('ID 必须是正整数十进制字符串')
   return value
-}
-export function idsFromText(text) {
-  const values = [...new Set(text.split(/[\s,，;；]+/).filter(Boolean))]
-  if (!values.length) throw new ApiError('请至少提供一个用户 ID')
-  return values.map(recordId)
 }
 export async function readAll(request, path, query = {}, signal) {
   const rows = []; let expectedTotal

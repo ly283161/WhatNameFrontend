@@ -1,4 +1,4 @@
-// Development-only HTTP adapter. The production application never imports this file.
+// 提供本地模拟接口和内存数据处理。
 import { readFileSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 

@@ -1,10 +1,13 @@
 <script setup>
+import { forEachConcurrent } from '../utils/concurrent.js'
 import { ref, watch, nextTick, onBeforeUnmount } from 'vue'
+import { trapTab } from '../utils/dialogFocus.js'
 import { X, Plus, ChevronRight, Pencil, FolderOpen, Menu as MenuIcon } from 'lucide-vue-next'
 import { api, session } from '../session.js'
 import { canGlobal as can } from '../access.js'
 import { readAll } from '../api/contracts.js'
-import { useList, id } from '../composables/useList.js'
+import { useList } from '../composables/useList.js'
+import { id } from '../utils/formatters.js'
 import { useActions } from '../composables/useActions.js'
 import RecordTable from '../components/RecordTable.vue'
 import FormDialog from '../components/FormDialog.vue'
@@ -12,7 +15,16 @@ const apps = useList('/applications'), app = ref(null), resourceOpen = ref(false
 const menus = useList(() => `/applications/${id(app.value?.appId)}/menus`, () => ({}), { collection: 'menus', paginated: false, auto: false })
 const apis = useList(() => `/applications/${id(app.value?.appId)}/apis`, () => ({}), { auto: false })
 const { dialog, error, notice, busy, perform, saved } = useActions()
-const resourcePanel = ref(null), apiCounts = ref({})
+const resourcePanel = ref(null), apiCounts = ref({}), resourceReads = new Map()
+// 资源读取仅在页面内复用，列表更新时失效，失败后允许重试。
+function readResource(path, all = false) {
+  if (!resourceReads.has(path)) {
+    const pending = all ? readAll(api, path).then(rows => new Map(rows.map(row => [row.apiId, row]))) : api(path)
+    resourceReads.set(path, pending)
+    pending.catch(() => { if (resourceReads.get(path) === pending) resourceReads.delete(path) })
+  }
+  return resourceReads.get(path)
+}
 let resourceTrigger, previousOverflow, previewVersion = 0, countVersion = 0
 const appColor = index => ['orange', 'blue', 'green', 'purple'][index % 4]
 const appInitials = row => row.appName.match(/[a-z]{2,}/i)?.[0].slice(0, 3).toUpperCase() || row.appName.slice(0, 2)
@@ -23,23 +35,20 @@ watch(() => apps.rows, rows => {
   const next = rows.find(row => row.appId === app.value?.appId) || rows[0] || null
   if (JSON.stringify(next) !== JSON.stringify(app.value)) app.value = next
 })
-// Fetch mapping counts before expansion, with bounded parallel requests.
+// 预先读取菜单关联接口数量，并限制并发请求数。
 watch(() => menus.rows, async rows => {
   const version = ++countVersion
+  resourceReads.clear()
   apiCounts.value = {}
   const pending = rows.filter(row => row.menuType === 2)
-  let cursor = 0
-  await Promise.all(Array.from({ length: Math.min(4, pending.length) }, async () => {
-    while (cursor < pending.length && version === countVersion) {
-      const row = pending[cursor++]
-      try {
-        const mapped = await api('/menus/' + id(row.menuId) + '/apis')
-        if (version === countVersion) apiCounts.value[row.menuId] = mapped.apiIds.length
-      } catch {
-        if (version === countVersion) apiCounts.value[row.menuId] = null
-      }
+  await forEachConcurrent(pending, async row => {
+    try {
+      const mapped = await readResource('/menus/' + id(row.menuId) + '/apis')
+      if (version === countVersion) apiCounts.value[row.menuId] = mapped.apiIds.length
+    } catch {
+      if (version === countVersion) apiCounts.value[row.menuId] = null
     }
-  }))
+  }, () => version === countVersion)
 })
 function apiCountLabel(row) {
   const count = apiCounts.value[row.menuId]
@@ -50,10 +59,10 @@ async function loadPreview(row) {
   const version = previewVersion, appId = app.value.appId
   previews.value[row.menuId] = { loading: true }
   try {
-    const [mapped, resources] = await Promise.all([api('/menus/' + id(row.menuId) + '/apis'), readAll(api, '/applications/' + id(appId) + '/apis')])
+    const [mapped, resources] = await Promise.all([readResource('/menus/' + id(row.menuId) + '/apis'), readResource('/applications/' + id(appId) + '/apis', true)])
     if (version !== previewVersion) return
     apiCounts.value[row.menuId] = mapped.apiIds.length
-    previews.value[row.menuId] = { items: mapped.apiIds.map(apiId => resources.find(item => item.apiId === apiId) || { apiId }) }
+    previews.value[row.menuId] = { items: mapped.apiIds.map(apiId => resources.get(apiId) || { apiId }) }
   } catch (e) { if (version === previewVersion) previews.value[row.menuId] = { error: e.message } }
 }
 function openResources(row, event) {
@@ -63,7 +72,8 @@ async function closeResources() {
   if (busy.value || dialog.value) return
   resourceOpen.value = false; await nextTick(); resourceTrigger?.focus()
 }
-watch(app, value => { previewVersion++; previews.value = {}; if (value) { menus.load(); apis.load() } else resourceOpen.value = false })
+watch(() => apis.rows, () => { if (app.value) resourceReads.delete('/applications/' + id(app.value.appId) + '/apis') })
+watch(app, value => { resourceReads.clear(); previewVersion++; previews.value = {}; if (value) { menus.load(); apis.load() } else resourceOpen.value = false })
 watch(resourceOpen, value => {
   if (value) { previousOverflow = document.body.style.overflow; document.body.style.overflow = 'hidden' }
   else if (previousOverflow !== undefined) { document.body.style.overflow = previousOverflow; previousOverflow = undefined }
@@ -72,17 +82,12 @@ watch([resourceOpen, dialog], async ([value, form]) => {
   if (value && !form) { await nextTick(); resourcePanel.value?.querySelector('button')?.focus() }
 })
 watch(() => session.accessVersion, () => { resourceOpen.value = false; app.value = null })
-onBeforeUnmount(() => { countVersion++; previewVersion++; if (previousOverflow !== undefined) document.body.style.overflow = previousOverflow })
+onBeforeUnmount(() => { resourceReads.clear(); countVersion++; previewVersion++; if (previousOverflow !== undefined) document.body.style.overflow = previousOverflow })
 function resourceKeys(event) {
   if (dialog.value) return
   if (event.key === 'Escape') { event.preventDefault(); closeResources(); return }
-  if (event.key !== 'Tab') return
-  const controls = [...resourcePanel.value.querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),a[href]')]
-  const first = controls[0], last = controls.at(-1)
-  if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus() }
-  else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
+  trapTab(event, resourcePanel.value, 'button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),a[href]')
 }
-const appColumns = [{ key: 'appName', label: '应用名称' }, { key: 'appCode', label: '编码' }, { key: 'status', label: '状态' }]
 const menuColumns = [{ key: 'menuName', label: '菜单', format: (v, r) => v || r.menuCode || ('菜单 ' + r.menuId) }, { key: 'menuCode', label: '编码' }, { key: 'menuType', label: '类型', format: v => v === 1 ? '目录' : '权限菜单' }, { key: 'parentId', label: '父菜单 ID' }, { key: 'status', label: '状态' }]
 const apiColumns = [{ key: 'apiName', label: '接口名称', format: (v, r) => v || r.apiCode || ('API ' + r.apiId) }, { key: 'httpMethod', label: '方法' }, { key: 'apiPath', label: '路径' }, { key: 'status', label: '状态' }]
 const statusOptions = [{ value: 1, label: '启用' }, { value: 0, label: '停用' }]

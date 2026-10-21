@@ -3,8 +3,10 @@ import { computed, ref, watch, onBeforeUnmount } from 'vue'
 import { Plus, Search } from 'lucide-vue-next'
 import { api, session } from '../session.js'
 import { can } from '../access.js'
-import { useList, id, statusText, errorText } from '../composables/useList.js'
+import { useList } from '../composables/useList.js'
+import { id, statusText, errorText, sourceText } from '../utils/formatters.js'
 import { useActions } from '../composables/useActions.js'
+import { useDebouncedSearch } from '../composables/useDebouncedSearch.js'
 import ContentDialog from '../components/ContentDialog.vue'
 import AccountTable from '../components/AccountTable.vue'
 import FormDialog from '../components/FormDialog.vue'
@@ -17,7 +19,7 @@ let detailController, detailSequence = 0
 const detailEntries = computed(() => detail.value ? [
   ['用户 ID', detail.value.userId], ['姓名', detail.value.realName], ['账号', detail.value.username], ['工号', detail.value.sgNo || '无工号'],
   ['手机号', detail.value.phoneMasked], ['所属部门', depts.rows.find(d => d.deptId === detail.value.deptId)?.deptName || detail.value.deptId],
-  ['来源', ({ 1: 'HR 同步', 2: '临时', 3: '受控初始化' })[detail.value.source] || '未提供'],
+  ['来源', sourceText(detail.value.source)],
   ['状态', statusText(detail.value.status)], ['密码初始化', typeof detail.value.passwordInitialized === 'boolean' ? (detail.value.passwordInitialized ? '已完成' : '未完成') : '未提供'],
 ] : [])
 async function showDetail(user) {
@@ -34,10 +36,7 @@ function closeDetail() { detailSequence++; detailController?.abort(); detailId.v
 watch(() => session.accessVersion, closeDetail)
 onBeforeUnmount(closeDetail)
 const editable = user => user.source === 2 && !user.sgNo && [1, 2].includes(user.status)
-let searchTimer
-function search() { clearTimeout(searchTimer); void list.load() }
-watch(keyword, () => { clearTimeout(searchTimer); searchTimer = setTimeout(search, 350) })
-onBeforeUnmount(() => clearTimeout(searchTimer))
+const search = useDebouncedSearch(keyword, () => list.load())
 function create() {
   dialog.value = { title: '新建临时账号', initial: { deptId: '', realName: '', phone: '', reason: '' }, fields: [
     { key: 'realName', label: '姓名', maxlength: 64 }, { key: 'phone', label: '手机号', type: 'tel', pattern: '1[0-9]{10}', maxlength: 11 },
