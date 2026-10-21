@@ -6,8 +6,10 @@ playwright-report/
 .env
 .env.*
 !.env.example
-!.env.demo
-!.env.mock
 *.local
 *.bak
 *.tmp
+
+# 仅保留旧模式文件用于追溯，不参与当前配置
+!/achieve/cleanup-20261021/.env.demo
+!/achieve/cleanup-20261021/.env.mock

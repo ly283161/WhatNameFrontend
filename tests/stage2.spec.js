@@ -5,6 +5,20 @@ const menu = (code, extra = {}) => ({ menuId: code, menuCode: code, menuName: co
 const nav = (page, name) => page.locator('aside nav').getByRole('button', { name, exact: true }).click()
 const confirm = page => page.locator('.stage-form').getByRole('button', { name: '确认提交', exact: true }).click()
 const slice = (items, query) => { const page = Number(query.get('page') || 1), pageSize = Number(query.get('pageSize') || 20); return { items: items.slice((page - 1) * pageSize, page * pageSize), page, pageSize, total: String(items.length) } }
+
+test('本人等级摘要支持资源配置，不要求额外授予管理员查看权限', async ({ page }) => {
+  const state = await backend(page, ['IAM_RESOURCES_VIEW', 'IAM_RESOURCES_WRITE'], (call, state) => {
+    if (call.path === '/auth/menus') return { data: { appCode: 'IAM', menus: state.menus, management: { appointed: true, adminLevel: state.level } } }
+    if (call.path === '/applications') return { data: slice([], call.query) }
+  })
+  await login(page)
+  await nav(page, '应用管理')
+  await expect(page.getByRole('button', { name: '登记应用', exact: true })).toBeVisible()
+  expect(state.calls.some(call => call.path === '/admins/me/scope')).toBe(false)
+  state.level = 2
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+  await expect(page.getByRole('button', { name: '登记应用', exact: true })).toHaveCount(0)
+})
 async function backend(page, codes, reply = () => undefined) {
   const state = { menus: codes.map(code => typeof code === 'string' ? menu(code) : code), level: 1, roots: ['17'], calls: [], unexpected: [], users: [person] }
   await page.route('**/api/v1/**', async route => {
