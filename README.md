@@ -33,6 +33,5 @@ dev/fixtures.json 是模拟测试所需的脱敏夹具，不是数据库种子�
 - src/api：请求与响应校验；session.js、access.js：会话与按钮显示。
 - tests：正式页面测试；dev：模拟测试适配器。
 - 工作区统一 [功能说明](../backend/docs/GUIDE.md)、[设计依据](../backend/docs/contracts/README.md)、[测试记录](../backend/docs/TESTING.md)。
-- [achieve](achieve/README.md)：旧原型及重复资料，独立前端仓库仍可追溯旧设计。
 
-按钮显示不能替代后端鉴权。完整演示初始化和真实端到端验收仍待完成。
+按钮显示不能替代后端鉴权。受控初始化入口见后端功能说明；真实页面端到端验收仍待完成。
