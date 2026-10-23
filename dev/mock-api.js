@@ -176,23 +176,18 @@ export function mockApi() {
     if (path === '/grants/user-roles' && method === 'POST') { fields(body, ['userId', 'roleId', 'sourceType', 'sourceRef', 'sourceDeptId', 'reason', 'expectedVersion']); required(body, ['expectedVersion']); return send(grant(body)) }
     if (path === '/grants/user-roles/revoke' && method === 'POST') { fields(body, ['userId', 'roleId', 'grantSourceId', 'reason', 'expectedVersion']); required(body, ['expectedVersion']); return send(grant(body, true)) }
     if (path === '/grants/user-roles/batch' && method === 'POST') {
-      fields(body, ['operation', 'roleId', 'targets', 'reason', 'dryRun']); required(body, ['operation', 'roleId', 'targets']); reason(body)
-      if (body.dryRun === true) fail('当前后端阶段不支持预检查')
-      const key = req.headers['idempotency-key']; if (!key || !/^[\x21-\x7e]{1,128}$/.test(key)) fail('缺少合法幂等键')
-      if (!['GRANT', 'REVOKE'].includes(body.operation) || !Array.isArray(body.targets) || !body.targets.length) fail('批量操作不合法')
-      positiveId(body.roleId); found(db.roles, 'roleId', body.roleId)
-      const userIds = new Set()
-      for (const target of body.targets) { fields(target, body.operation === 'GRANT' ? ['userId', 'sourceType', 'sourceRef', 'sourceDeptId'] : ['userId', 'grantSourceId']); positiveId(target.userId); required(target, body.operation === 'GRANT' ? ['sourceType', 'sourceRef'] : ['grantSourceId']); if (userIds.has(target.userId)) fail('批量目标不能重复'); userIds.add(target.userId) }
-      const signature = JSON.stringify(body), previous = idempotency.get(key)
-      if (previous) { if (previous.signature !== signature) fail('同一幂等键的内容发生变化', 'IDEMPOTENCY_CONFLICT', 409); return send(batchResult(batches.get(previous.batchId), query)) }
-      const batchId = String(nextId++), batch = { batchId, processingStatus: 'PENDING', items: body.targets.map(t => ({ userId: t.userId, status: 'PENDING' })) }; batches.set(batchId, batch); idempotency.set(key, { signature, batchId })
-      setTimeout(() => {
-        for (let i = 0; i < body.targets.length; i++) { try { const data = grant({ ...body.targets[i], roleId: body.roleId, reason: body.reason }, body.operation === 'REVOKE'); batch.items[i] = { userId: body.targets[i].userId, status: 'APPLIED', grantSourceId: data.grantSourceId || data.revokedSourceId } } catch (e) { batch.items[i] = { userId: body.targets[i].userId, status: 'FAILED', code: e.code || 'INVALID_ARGUMENT' } } }
-        const failed = batch.items.filter(i => i.status === 'FAILED').length; batch.processingStatus = failed === 0 ? 'COMPLETED' : failed === batch.items.length ? 'FAILED' : 'PARTIAL_SUCCESS'
-      }, 100)
-      status = 202; return send({ batchId, processingStatus: 'PENDING', total: batch.items.length })
+      fields(body, ['operation', 'roleId', 'targets', 'reason', 'dryRun']); reason(body)
+      if (body.dryRun === true || !['GRANT', 'REVOKE'].includes(body.operation) || !Array.isArray(body.targets) || !body.targets.length || body.targets.length > 100) fail('每次仅支持1–100位用户')
+      positiveId(body.roleId)
+      const seen = new Set()
+      for (const target of body.targets) { positiveId(target.userId); if (seen.has(target.userId)) fail('批量目标不能重复'); seen.add(target.userId) }
+      const results = body.targets.map(target => {
+        try { const data = grant({ ...target, roleId: body.roleId, reason: body.reason }, body.operation === 'REVOKE'); return { userId: target.userId, status: 'APPLIED', grantSourceId: data.grantSourceId || data.revokedSourceId } }
+        catch (error) { return { userId: target.userId, status: 'FAILED', code: error.code || 'INVALID_ARGUMENT' } }
+      })
+      const succeeded = results.filter(item => item.status === 'APPLIED').length, failed = results.length - succeeded
+      return send({ processingStatus: failed === 0 ? 'COMPLETED' : succeeded === 0 ? 'FAILED' : 'PARTIAL_SUCCESS', succeeded, failed, total: results.length, items: results })
     }
-    if ((match = path.match(/^\/grants\/batches\/(\d+)$/)) && method === 'GET') return send(batchResult(batches.get(match[1]) || fail('任务不存在', 'RESOURCE_NOT_FOUND', 404), query))
     if (path === '/grants/history' && method === 'GET') {
       const from = query.get('from'), to = query.get('to')
       if ((from && Number.isNaN(Date.parse(from))) || (to && Number.isNaN(Date.parse(to))) || (from && to && Date.parse(from) > Date.parse(to))) fail('时间范围不合法')

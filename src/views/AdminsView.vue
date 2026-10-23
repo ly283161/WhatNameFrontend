@@ -177,7 +177,12 @@ function delegate(row) {
       >
         撤销任命</button
       ><button
-        v-if="can('IAM_GRANTS_DELEGATE') && can('IAM_GRANTS_VIEW')"
+        v-if="
+          session.scope?.adminLevel === 1 &&
+          row.adminLevel > 1 &&
+          can('IAM_GRANTS_DELEGATE') &&
+          can('IAM_GRANTS_VIEW')
+        "
         class="text-button"
         :disabled="busy"
         @click="delegate(row)"

@@ -188,68 +188,51 @@ test('全量替换配置读取全部应用页，并保留不可见的已有菜�
   expect(state.calls.some(c => c.path === '/applications' && c.query.get('page') === '2')).toBe(true)
 })
 
-test('2001 个目标异步分页查询；仅重试所有页已失败目标，新键不重放成功项', async ({ page }) => {
-  const ids = Array.from({ length: 2001 }, (_, i) => String(1000 + i)), failed = new Set(['1500', '3000'])
-  let submitted = 0, queries = 0
-  const state = await backend(page, ['IAM_GRANTS_VIEW', 'IAM_GRANTS_WRITE', 'IAM_USERS_VIEW'], call => {
-    if (call.path === '/grants/user-roles/batch') { submitted++; return { status: 202, data: { batchId: submitted === 1 ? '900' : '901', processingStatus: 'PENDING', total: submitted === 1 ? 2001 : 2 } } }
-    if (call.path === '/grants/batches/900') {
-      queries++
-      const items = ids.map(userId => ({ userId, status: queries === 1 ? 'PENDING' : failed.has(userId) ? 'FAILED' : 'APPLIED', code: failed.has(userId) ? 'OUT_OF_SCOPE' : undefined }))
-      return { data: { batchId: '900', processingStatus: queries === 1 ? 'PROCESSING' : 'PARTIAL_SUCCESS', succeeded: queries === 1 ? 0 : 1999, failed: queries === 1 ? 0 : 2, pending: queries === 1 ? 2001 : 0, ...slice(items, call.query) } }
-    }
-    if (call.path === '/grants/batches/901') return { data: { batchId: '901', processingStatus: 'COMPLETED', succeeded: 2, failed: 0, pending: 0, ...slice([...failed].map(userId => ({ userId, status: 'APPLIED' })), call.query) } }
-  })
-  state.users = ids.map(userId => ({ ...person, userId, realName: '用户 ' + userId }))
-  await login(page); await grantInput(page, [...ids, ids[0]])
-  await expect(page.getByText(/已选 2001 位用户/)).toBeVisible()
-  await page.getByRole('button', { name: '提交', exact: true }).click()
-  await confirm(page); await expect(page.locator('.stage-form')).toHaveCount(0)
-  await expect(page.getByRole('heading', { name: '执行结果：部分成功' })).toBeVisible({ timeout: 15000 })
-  await page.getByRole('button', { name: '下一页结果' }).click()
-  await page.getByRole('button', { name: '仅重试失败目标' }).click()
-  await expect(page.locator('.stage-form')).toContainText('共 2 位用户')
-  await confirm(page); await expect(page.locator('.stage-form')).toHaveCount(0)
-  const posts = state.calls.filter(c => c.path === '/grants/user-roles/batch')
-  expect(posts[0].body.targets).toHaveLength(2001)
-  expect(posts[1].body.targets.map(t => t.userId)).toEqual(['1500', '3000'])
-  expect(posts[0].headers['idempotency-key']).not.toBe(posts[1].headers['idempotency-key'])
-  expect(state.calls.filter(c => c.path === '/grants/batches/900' && c.query.get('pageSize') === '500')).toHaveLength(5)
-  expect(await page.evaluate(() => sessionStorage.getItem('iam-batch-id:101'))).toBe('901')
-  expect(await page.evaluate(() => JSON.stringify([Object.entries(localStorage), Object.entries(sessionStorage)]))).not.toContain('STAGE2-BUSINESS-REF')
-  expect(state.unexpected).toEqual([])
-  expect(state.calls.some(c => c.path === '/users')).toBe(true)
-})
-
-test('提交响应丢失后，同内容确认沿用幂等键，不把超时误报为完成', async ({ page }) => {
+test('同步批量直接显示全部结果，只重试明确失败的用户且不查询任务', async ({ page }) => {
+  const second = { ...person, userId: '9007199254740994', realName: '第二位用户' }
   let posts = 0
   const state = await backend(page, ['IAM_GRANTS_VIEW', 'IAM_GRANTS_WRITE', 'IAM_USERS_VIEW'], call => {
-    if (call.path === '/grants/user-roles/batch') return ++posts === 1 ? { abort: true } : { status: 202, data: { batchId: '910', processingStatus: 'PENDING', total: 1 } }
+    if (call.path === '/grants/user-roles/batch') {
+      posts++
+      return { data: posts === 1
+        ? { processingStatus: 'PARTIAL_SUCCESS', succeeded: 1, failed: 1, total: 2, items: [{ userId: person.userId, status: 'APPLIED', grantSourceId: '31' }, { userId: second.userId, status: 'FAILED', code: 'OUT_OF_SCOPE' }] }
+        : { processingStatus: 'COMPLETED', succeeded: 1, failed: 0, total: 1, items: [{ userId: second.userId, status: 'APPLIED', grantSourceId: '32' }] } }
+    }
   })
-  await login(page); await grantInput(page)
-  await page.getByRole('button', { name: '提交', exact: true }).click()
-  await confirm(page)
-  await expect(page.locator('.stage-form').getByRole('alert')).toContainText('未能确认提交结果')
-  await confirm(page); await expect(page.locator('.stage-form')).toHaveCount(0)
-  const requests = state.calls.filter(c => c.path === '/grants/user-roles/batch')
-  expect(requests[0].headers['idempotency-key']).toBe(requests[1].headers['idempotency-key'])
-  expect(requests[0].body).toEqual(requests[1].body)
+  state.users = [person, second]
+  await login(page); await grantInput(page, [person.userId, second.userId])
+  await page.getByRole('button', { name: '提交', exact: true }).click(); await confirm(page)
+  await expect(page.getByRole('heading', { name: '执行结果：部分成功' })).toBeVisible()
+  await page.getByRole('button', { name: '仅重试失败目标' }).click(); await confirm(page)
+  await expect(page.getByRole('region', { name: '权限操作结果' })).toContainText('全部完成')
+  const calls = state.calls.filter(call => call.path === '/grants/user-roles/batch')
+  expect(calls).toHaveLength(2)
+  expect(calls[1].body.targets.map(target => target.userId)).toEqual([second.userId])
+  expect(state.calls.some(call => call.path.startsWith('/grants/batches/'))).toBe(false)
 })
 
-test('重登只恢复本账号任务查询，不持久化授权正文且不自动重发', async ({ page }) => {
-  await page.addInitScript(() => { sessionStorage.setItem('iam-batch-id:101', '920'); sessionStorage.setItem('iam-batch-id:102', '999') })
-  const state = await backend(page, ['IAM_GRANTS_VIEW', 'IAM_GRANTS_WRITE', 'IAM_USERS_VIEW'], call => call.path === '/grants/batches/920' ? { data: { batchId: '920', processingStatus: 'PARTIAL_SUCCESS', succeeded: 0, failed: 1, pending: 0, ...slice([{ userId: person.userId, status: 'FAILED', code: 'ROLE_NOT_DELEGABLE' }], call.query) } } : undefined)
+test('批量响应丢失提示核对授权状态，不自动重发或报告完成', async ({ page }) => {
+  const state = await backend(page, ['IAM_GRANTS_VIEW', 'IAM_GRANTS_WRITE', 'IAM_USERS_VIEW'], call => call.path === '/grants/user-roles/batch' ? { abort: true } : undefined)
+  await login(page); await grantInput(page)
+  await page.getByRole('button', { name: '提交', exact: true }).click(); await confirm(page)
+  await expect(page.locator('.stage-form').getByRole('alert')).toContainText('请先查询用户角色及授权来源')
+  expect(state.calls.filter(call => call.path === '/grants/user-roles/batch')).toHaveLength(1)
+  await expect(page.getByRole('region', { name: '权限操作结果' })).toHaveCount(0)
+})
+
+test('重登不恢复旧批量任务，也不自动提交操作', async ({ page }) => {
+  await page.addInitScript(() => sessionStorage.setItem('iam-batch-id:101', '920'))
+  const state = await backend(page, ['IAM_GRANTS_VIEW', 'IAM_GRANTS_WRITE', 'IAM_USERS_VIEW'])
   await login(page); await nav(page, '权限分配')
-  await expect(page.getByRole('heading', { name: '执行结果：部分成功' })).toBeVisible()
-  await expect(page.getByRole('button', { name: '仅重试失败目标' })).toHaveCount(0)
-  expect(state.calls.some(c => c.path === '/grants/batches/999' || c.path === '/grants/user-roles/batch')).toBe(false)
+  await expect(page.getByRole('region', { name: '权限操作结果' })).toHaveCount(0)
+  expect(state.calls.some(call => call.path.startsWith('/grants/batches/') || call.path === '/grants/user-roles/batch')).toBe(false)
 })
 
 test('统一提交按所选来源回收；同批次同人多来源回收在提交前拦截', async ({ page }) => {
   const sources = [{ grantSourceId: '31', sourceType: 'MANUAL', sourceRef: 'SOURCE-A', active: true }, { grantSourceId: '32', sourceType: 'MANUAL', sourceRef: 'SOURCE-B', active: true }]
   const state = await backend(page, ['IAM_GRANTS_VIEW', 'IAM_GRANTS_WRITE', 'IAM_USERS_VIEW'], call => {
     if (call.path === '/users/' + person.userId + '/roles/2/sources') return { data: { userId: person.userId, roleId: '2', grantRevision: 'v9', sources } }
-    if (call.path === '/grants/user-roles/batch') return { status: 202, data: { batchId: '931', processingStatus: 'PENDING', total: 1 } }
+    if (call.path === '/grants/user-roles/batch') return { data: { processingStatus: 'COMPLETED', succeeded: 1, failed: 0, total: 1, items: [{ userId: person.userId, status: 'APPLIED', grantSourceId: '31' }] } }
   })
   await login(page); await grantInput(page)
   await page.getByLabel('操作', { exact: true }).selectOption('REVOKE')
@@ -298,21 +281,14 @@ test('旧范围的账号列表晚返回时，不重新显示旧用户信息', as
   await expect(page.getByText('共 0 条 · 第 1 页')).toBeVisible()
 })
 
-test('进行中的批量任务查询失去范围后隐藏旧结果，不重发写请求', async ({ page }) => {
-  await page.addInitScript(() => sessionStorage.setItem('iam-batch-id:101', '930'))
-  let denied = false
-  const state = await backend(page, ['IAM_GRANTS_VIEW', 'IAM_GRANTS_WRITE', 'IAM_USERS_VIEW'], call => {
-    if (call.path === '/grants/batches/930') return denied ? { status: 403, code: 'OUT_OF_SCOPE' } : { data: { batchId: '930', processingStatus: 'PROCESSING', succeeded: 0, failed: 0, pending: 1, ...slice([{ userId: person.userId, status: 'PENDING' }], call.query) } }
-  })
-  await login(page); await nav(page, '权限分配')
-  await expect(page.getByRole('region', { name: '权限操作结果' })).toContainText(person.realName)
-  denied = true
-  await page.getByRole('button', { name: '刷新批量结果' }).click()
-  await expect(page.getByRole('region', { name: '权限操作结果' })).toHaveCount(0)
-  await expect(page.getByRole('alert')).toContainText('查询失败不会重新提交任务')
-  expect(state.calls.some(c => c.path === '/grants/user-roles/batch')).toBe(false)
+test('页面在提交前拦截超过100人的批量操作', async ({ page }) => {
+  const state = await backend(page, ['IAM_GRANTS_VIEW', 'IAM_GRANTS_WRITE', 'IAM_USERS_VIEW'])
+  state.users = Array.from({ length: 101 }, (_, index) => ({ ...person, userId: String(1000 + index), realName: '用户' + index }))
+  await login(page); await grantInput(page, state.users.map(user => user.userId))
+  await page.getByRole('button', { name: '提交', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('最多操作 100 位用户')
+  expect(state.calls.some(call => call.path === '/grants/user-roles/batch')).toBe(false)
 })
-
 
 test('管理范围变更清空已选授权用户和旧姓名，重新读取可授权清单', async ({ page }) => {
   const state = await backend(page, ['IAM_GRANTS_VIEW', 'IAM_GRANTS_WRITE', 'IAM_ADMINS_VIEW', 'IAM_USERS_VIEW'])

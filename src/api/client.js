@@ -111,7 +111,7 @@ export function createApiClient({
           ? controller.signal.aborted
             ? '查询已取消或超时，请重新查询'
             : '无法连接服务，请确认后端已启动'
-          : '未能确认提交结果，请先查询服务端状态；批量操作可用相同内容和请求标识确认，勿重复创建操作',
+          : '未能确认提交结果，请先查询用户角色及授权来源；批量操作可能部分成功，请勿直接全部重试',
       )
     } finally {
       clearTimeout(timer)

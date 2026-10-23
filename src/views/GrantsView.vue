@@ -290,7 +290,6 @@ async function loadRoles() {
   }
 }
 onMounted(() => {
-  void batch.resume()
   void loadRoles()
 })
 watch(
@@ -360,6 +359,7 @@ function command() {
       : sourceRows.value
           .filter((s) => selectedSources.value.includes(s.grantSourceId))
           .map((s) => ({ userId: s.userId, grantSourceId: s.grantSourceId }))
+  if (targets.length > 100) throw new Error('每次最多操作 100 位用户')
   if (!targets.length || chosen.value.some((userId) => !targets.some((t) => t.userId === userId)))
     throw new Error('请为每位用户选择一条有效回收依据；无有效依据的用户请取消选择')
   if (new Set(targets.map((t) => t.userId)).size !== targets.length)
@@ -388,11 +388,11 @@ function confirmBatch(body, retry = false) {
       ' 位用户；原因：' +
       body.reason +
       '。回收仅影响选定依据。' +
-      (retry ? '仅提交原任务中已确认失败的目标，使用新的请求标识。' : ''),
+      (retry ? '仅提交本次明确返回失败的用户。' : ''),
     submit: async () => {
       if (!can('IAM_GRANTS_WRITE')) throw new Error('当前没有权限分配资格')
       await batch.submit(body, { fresh: retry })
-      notice.value = '任务已受理，执行结果以服务端逐项查询为准'
+      notice.value = '操作已完成，请查看逐人执行结果'
       if (can('IAM_GRANTS_VIEW') && historyOpen.value) await history.value.load()
     },
   }
@@ -506,25 +506,12 @@ function retryFailed() {
   <p v-if="batch.error" class="app-error" role="alert">{{ batch.error }}</p>
   <section v-if="result" class="panel result-panel" aria-label="权限操作结果">
     <h3>执行结果：{{ statusName(result.processingStatus) }}</h3>
-    <p>
-      当前可见：成功 {{ result.succeeded ?? '—' }} · 失败 {{ result.failed ?? '—' }} · 待处理
-      {{ result.pending ?? result.total ?? '—' }}
-    </p>
+    <p>共 {{ result.total }} 位用户：成功 {{ result.succeeded }} · 失败 {{ result.failed }}</p>
     <p class="muted">
-      {{
-        batch.querying ? '每 2 秒自动查询，离开页面后暂停。' : '以当前管理范围内的逐项结果为准。'
-      }}
-      最近更新 {{ batch.updatedAt || '—' }}
+      本次同步执行结果；每次最多 100 位用户。最近更新 {{ batch.updatedAt || '—' }}
     </p>
     <div class="inline-form">
       <button
-        v-if="result.batchId"
-        class="button light"
-        :disabled="batch.busy"
-        @click="batch.load(1)"
-      >
-        刷新批量结果</button
-      ><button
         v-if="batch.canRetry && can('IAM_GRANTS_WRITE')"
         class="button primary"
         :disabled="busy || batch.busy"
@@ -550,21 +537,6 @@ function retryFailed() {
           </tr>
         </tbody>
       </table>
-    </div>
-    <div v-if="result.page" class="pagination">
-      <button
-        class="button light"
-        :disabled="batch.busy || result.page <= 1"
-        @click="batch.load(result.page - 1)"
-      >
-        上一页结果</button
-      ><button
-        class="button light"
-        :disabled="batch.busy || result.page * result.pageSize >= result.total"
-        @click="batch.load(result.page + 1)"
-      >
-        下一页结果
-      </button>
     </div>
   </section>
   <ContentDialog v-if="historyOpen" title="授权历史" @close="closeHistory"

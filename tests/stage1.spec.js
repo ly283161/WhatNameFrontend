@@ -175,19 +175,17 @@ test('统一提交支持一人授予与精确回收，其他来源仍有效', as
   expect(data.grantRevision).toMatch(/^v\d+$/)
 })
 
-test('批量 202 接收不表示完成，逐项显示部分失败，同键重试不重复授权', async ({ page }) => {
+test('同步批量直接返回部分失败，稳定来源重试不重复授权', async ({ page }) => {
   const headers = await signIn(page)
   const body = { operation: 'GRANT', roleId: '2', targets: [{ userId: '102', sourceType: 'MANUAL', sourceRef: 'STAGE1-BATCH-102' }, { userId: '99999999', sourceType: 'MANUAL', sourceRef: 'STAGE1-MISSING' }], reason: '批量逐项结果测试', dryRun: false }
   const requestHeaders = { ...headers, 'Idempotency-Key': 'stage1-partial-key' }
   const response = await page.request.post('/api/v1/grants/user-roles/batch', { headers: requestHeaders, data: body })
-  expect(response.status()).toBe(202)
-  const pending = (await response.json()).data
-  expect(pending.processingStatus).toBe('PENDING')
-  await expect.poll(async () => (await api(page, headers, '/grants/batches/' + pending.batchId)).processingStatus).toBe('PARTIAL_SUCCESS')
-  const result = await api(page, headers, '/grants/batches/' + pending.batchId)
+  expect(response.status()).toBe(200)
+  const result = (await response.json()).data
+  expect(result.processingStatus).toBe('PARTIAL_SUCCESS')
   expect(result.succeeded).toBe(1); expect(result.failed).toBe(1)
   const replay = await api(page, requestHeaders, '/grants/user-roles/batch', { method: 'POST', data: body })
-  expect(replay.batchId).toBe(pending.batchId)
+  expect(replay.processingStatus).toBe('PARTIAL_SUCCESS')
   await navigate(page, '权限分配')
   await page.getByLabel('角色', { exact: true }).selectOption('2')
   await page.locator('tbody tr').filter({ hasText: 'SG000003' }).getByRole('checkbox').check()
@@ -196,9 +194,9 @@ test('批量 202 接收不表示完成，逐项显示部分失败，同键重试
   await page.getByRole('button', { name: '提交', exact: true }).click()
   const outgoing = page.waitForRequest(r => r.url().endsWith('/grants/user-roles/batch') && r.method() === 'POST')
   await submit(page)
-  expect((await outgoing).headers()['idempotency-key']).toBeTruthy()
+  expect((await outgoing).method()).toBe('POST')
   await expect(page.getByRole('region', { name: '权限操作结果' })).toContainText(/排队中|处理中|全部完成/)
-  await expect.poll(async () => { await page.getByRole('button', { name: '刷新批量结果' }).click(); return page.getByRole('region', { name: '权限操作结果' }).innerText() }).toContain('全部完成')
+  await expect(page.getByRole('region', { name: '权限操作结果' })).toContainText('全部完成')
 })
 
 test('部门人员、冻结解冻，管理员任命、委派清单与撤任命', async ({ page }) => {

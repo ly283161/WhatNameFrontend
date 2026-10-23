@@ -261,7 +261,6 @@ const detailEntries = computed(() => {
       ['访问接口 ID', row.apiId],
       ['访问结果', resultText(row.allowed, '允许访问', '拒绝访问')],
       ['鉴权记录编号', row.decisionId],
-      ['权限版本', row.permissionVersion],
     )
   else
     entries.push(
