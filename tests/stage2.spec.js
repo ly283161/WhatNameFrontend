@@ -220,6 +220,23 @@ test('批量响应丢失提示核对授权状态，不自动重发或报告完�
   await expect(page.getByRole('region', { name: '权限操作结果' })).toHaveCount(0)
 })
 
+for (const response of [
+  { name: '缺少逐人结果', data: { processingStatus: 'COMPLETED', succeeded: 1, failed: 0, total: 1 } },
+  { name: '返回已取消的异步状态', data: { processingStatus: 'PENDING', succeeded: 0, failed: 0, total: 1, items: [{ userId: person.userId, status: 'PENDING' }] } },
+]) {
+  test(`批量${response.name}时不报告成功且不允许重试未知结果`, async ({ page }) => {
+    const state = await backend(page, ['IAM_GRANTS_VIEW', 'IAM_GRANTS_WRITE', 'IAM_USERS_VIEW'], call =>
+      call.path === '/grants/user-roles/batch' ? { data: response.data } : undefined)
+    await login(page); await grantInput(page)
+    await page.getByRole('button', { name: '提交', exact: true }).click(); await confirm(page)
+    await expect(page.locator('.stage-form').getByRole('alert')).toContainText('批量结果不符合接口约定')
+    await expect(page.getByRole('region', { name: '权限操作结果' })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: '仅重试失败目标' })).toHaveCount(0)
+    expect(state.calls.filter(call => call.path === '/grants/user-roles/batch')).toHaveLength(1)
+    expect(state.calls.some(call => call.path.startsWith('/grants/batches/'))).toBe(false)
+  })
+}
+
 test('重登不恢复旧批量任务，也不自动提交操作', async ({ page }) => {
   await page.addInitScript(() => sessionStorage.setItem('iam-batch-id:101', '920'))
   const state = await backend(page, ['IAM_GRANTS_VIEW', 'IAM_GRANTS_WRITE', 'IAM_USERS_VIEW'])
