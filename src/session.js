@@ -152,7 +152,7 @@ export async function login(credentials) {
   if (attempt === generation) {
     session.accountLabel =
       credentials.loginType === 'PHONE'
-        ? credentials.identifier.slice(0, 3) + '****' + credentials.identifier.slice(-4)
+        ? credentials.identifier
         : credentials.identifier
     session.userId = result.userId
   }

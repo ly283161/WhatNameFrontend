@@ -102,7 +102,7 @@ export function mockApi() {
       fields(body, ['realName', 'phone', 'deptId', 'reason']); required(body, ['realName', 'phone', 'deptId']); reason(body); positiveId(body.deptId); found(db.departments, 'deptId', body.deptId)
       if (!/^1\d{10}$/.test(body.phone)) fail('手机号格式不合法')
       if (phoneUsers.has(body.phone)) fail('手机号已存在', 'DUPLICATE_RESOURCE', 409)
-      const userId = String(nextId++), user = { userId, realName: body.realName, username: 'temp' + userId, sgNo: null, phoneMasked: body.phone.slice(0, 3) + '****' + body.phone.slice(-4), deptId: body.deptId, status: 1, source: 2, passwordInitialized: false }
+      const userId = String(nextId++), user = { userId, realName: body.realName, username: 'temp' + userId, sgNo: null, phone: body.phone, deptId: body.deptId, status: 1, source: 2, passwordInitialized: false }
       phoneUsers.set(body.phone, userId); db.users.push(user); record('USER_CREATE', userId); return send(user)
     }
     let match

@@ -19,14 +19,14 @@ const api = async (page, headers, path, options = {}) => {
   return (await response.json()).data
 }
 
-test('三份来源数据脱敏、关联完整，正式页面可按工号查询', async ({ page }) => {
+test('三份演示数据使用合成手机号、关联完整，正式页面可按工号查询', async ({ page }) => {
   const fixtures = JSON.parse(readFileSync(new URL('../dev/fixtures.json', import.meta.url), 'utf8'))
   expect(fixtures.users).toHaveLength(10000)
   expect(fixtures.departments).toHaveLength(111)
   expect(fixtures.applications).toHaveLength(18)
   expect(fixtures.menus.filter(m => m.menuType === 2)).toHaveLength(359)
   const departments = new Set(fixtures.departments.map(d => d.deptId))
-  expect(fixtures.users.every(u => departments.has(u.deptId) && /^\d{3}\*{4}\d{4}$/.test(u.phoneMasked) && !('phone' in u))).toBe(true)
+  expect(fixtures.users.every(u => departments.has(u.deptId) && /^1\d{10}$/.test(u.phone))).toBe(true)
   await signIn(page)
   await navigate(page, '用户账号')
   await page.getByRole('textbox', { name: '搜索姓名、账号或工号' }).fill('SG000001')
@@ -57,7 +57,7 @@ test('临时账号创建、详情弹窗、暂停与恢复均通过契约请求',
   await expect(accountDetail.getByText('用户 ID', { exact: true })).toBeVisible()
   await expect(accountDetail.getByText(new URL(queriedUser.url()).pathname.split('/').at(-1), { exact: true })).toBeVisible()
   await expect(accountDetail.getByText('阶段一临时账号', { exact: true })).toBeVisible()
-  await expect(accountDetail.getByText('188****0101', { exact: true })).toBeVisible()
+  await expect(accountDetail.getByText('18800000101', { exact: true })).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(accountDetail).toHaveCount(0)
   await expect(row.getByRole('button', { name: '详情', exact: true })).toBeFocused()

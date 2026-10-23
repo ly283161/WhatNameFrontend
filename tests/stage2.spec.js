@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 
-const person = { userId: '9007199254740993', username: 'stage2', realName: '第二阶段用户', sgNo: '', phoneMasked: '138****0000', deptId: '17', status: 1, source: 2 }
+const person = { userId: '9007199254740993', username: 'stage2', realName: '第二阶段用户', sgNo: '', phone: '13800000000', deptId: '17', status: 1, source: 2 }
 const menu = (code, extra = {}) => ({ menuId: code, menuCode: code, menuName: code, menuType: 2, navigationOnly: false, path: null, ...extra })
 const nav = (page, name) => page.locator('aside nav').getByRole('button', { name, exact: true }).click()
 const confirm = page => page.locator('.stage-form').getByRole('button', { name: '确认提交', exact: true }).click()

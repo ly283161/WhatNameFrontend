@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test'
 
 const success = data => ({ success: true, code: 'OK', requestId: 'test-request', data })
-const user = { userId: '9007199254740993', username: 'zs', realName: '张三', sgNo: 'SG001', phoneMasked: '138****0000', deptId: '17', status: 1 }
+const user = { userId: '9007199254740993', username: 'zs', realName: '张三', sgNo: 'SG001', phone: '13800000000', deptId: '17', status: 1 }
 const menus = [{ menuId: '21', menuCode: 'IAM_USERS_VIEW', menuName: '用户账号', path: '/users' }]
 
 async function backend(page, { grantedMenus = menus, failLogout = false, expire = false, menuFailure = false } = {}) {

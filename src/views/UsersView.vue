@@ -34,7 +34,7 @@ const detailEntries = computed(() =>
         ['姓名', detail.value.realName],
         ['账号', detail.value.username],
         ['工号', detail.value.sgNo || '无工号'],
-        ['手机号', detail.value.phoneMasked],
+        ['手机号', detail.value.phone],
         [
           '所属部门',
           depts.rows.find((d) => d.deptId === detail.value.deptId)?.deptName || detail.value.deptId,
