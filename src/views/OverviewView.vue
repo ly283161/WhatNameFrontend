@@ -1,5 +1,5 @@
 <script setup>
-import { Users, KeyRound, Blocks, ArrowLeftRight, ChevronRight } from 'lucide-vue-next'
+import { Users, KeyRound, Blocks } from 'lucide-vue-next'
 import { session } from '../session.js'
 import { useList } from '../composables/useList.js'
 import { can } from '../access.js'
@@ -47,23 +47,4 @@ const summaries = [
       <component :is="item.icon" :size="23" :stroke-width="1.5" />
     </button>
   </div>
-  <section class="panel simple-tasks">
-    <div class="panel-heading">
-      <h3>待处理事项 <span class="count-badge">—</span></h3>
-    </div>
-    <div class="simple-task">
-      <span class="icon-tile neutral"><ArrowLeftRight :size="20" /></span>
-      <div>
-        <strong>人员变动</strong>
-        <p>{{ can('IAM_DEPTS_VIEW') ? '待处理状态暂不可查询' : '当前没有可用的人员变动入口' }}</p>
-      </div>
-      <button
-        v-if="can('IAM_DEPTS_VIEW')"
-        class="text-button"
-        @click="$emit('navigate', 'organization')"
-      >
-        去查看<ChevronRight :size="14" />
-      </button>
-    </div>
-  </section>
 </template>

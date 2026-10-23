@@ -200,9 +200,11 @@ test('同步批量直接返回部分失败，稳定来源重试不重复授权',
 })
 
 test('部门人员、冻结解冻，管理员任命、委派清单与撤任命', async ({ page }) => {
-  await signIn(page); await navigate(page, '人员与组织变动')
-  await expect(page.getByRole('heading', { name: '人员变动记录' })).toBeVisible()
-  await page.getByRole('tab', { name: '部门冻结', exact: true }).click()
+  await signIn(page)
+  await expect(page.getByRole('heading', { name: /待处理事项/ })).toHaveCount(0)
+  await navigate(page, '组织管理')
+  await expect(page.getByRole('heading', { name: '部门权限冻结' })).toBeVisible()
+  await expect(page.getByRole('tab', { name: '人员变动', exact: true })).toHaveCount(0)
   const dept = page.locator('.department-grid > div').filter({ hasText: '园林绿化分公司-综合办公室' })
   await dept.getByRole('button', { name: '查看人员' }).click()
   await expect(page.getByRole('dialog', { name: '园林绿化分公司-综合办公室 · 部门及下属人员' })).toBeVisible()

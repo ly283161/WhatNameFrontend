@@ -11,8 +11,7 @@ import FormDialog from '../components/FormDialog.vue'
 const departments = useList('/departments', () => ({ includeDescendants: true }), {
   paginated: false,
 })
-const selectedDept = ref(null),
-  tab = ref('people')
+const selectedDept = ref(null)
 const people = useList(
   () => `/departments/${id(selectedDept.value?.deptId)}/users`,
   () => ({ includeDescendants: true }),
@@ -75,44 +74,13 @@ function peopleKeys(event) {
 <template>
   <div class="page-heading">
     <div>
-      <h1>人员与组织变动</h1>
-      <p>查看人员变动与管理部门冻结</p>
+      <h1>组织管理</h1>
+      <p>查看部门及人员，管理部门冻结。</p>
     </div>
-  </div>
-  <div class="page-tabs" role="tablist" aria-label="变动管理">
-    <button role="tab" :aria-selected="tab === 'people'" @click="tab = 'people'">人员变动</button
-    ><button role="tab" :aria-selected="tab === 'departments'" @click="tab = 'departments'">
-      部门冻结
-    </button>
   </div>
   <p v-if="error" role="alert" class="app-error">{{ error }}</p>
   <p v-if="notice" role="status" class="action-notice">{{ notice }}</p>
-  <section v-if="tab === 'people'" class="panel table-panel">
-    <div class="panel-heading">
-      <h3>人员变动记录</h3>
-      <span class="tag neutral">HR 同步</span>
-    </div>
-    <div class="table-scroll">
-      <table>
-        <thead>
-          <tr>
-            <th>员工</th>
-            <th>变动类型</th>
-            <th>原部门</th>
-            <th>新部门</th>
-            <th>处理状态</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td colspan="6" class="empty" role="status">人员变动记录暂不可查询</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-  </section>
-  <section v-else class="panel department-panel" :inert="!!selectedDept || !!dialog">
+  <section class="panel department-panel" :inert="!!selectedDept || !!dialog">
     <div class="panel-heading">
       <div>
         <h3>部门权限冻结</h3>

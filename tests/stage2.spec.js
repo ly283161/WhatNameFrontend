@@ -122,8 +122,7 @@ test('范围变化保留功能入口时关闭旧账号操作，并重新查询�
 
 test('继承冻结与合并部门有独立状态，合并部门没有解冻按钮', async ({ page }) => {
   const state = await backend(page, ['IAM_DEPTS_VIEW', 'IAM_DEPTS_FREEZE', 'IAM_USERS_VIEW'], call => call.path === '/departments' ? { data: { items: [{ deptId: '17', parentId: '0', deptName: '继承冻结部门', status: 1, effectivelyFrozen: true, merged: false }, { deptId: '18', parentId: '0', deptName: '已合并部门', status: 0, effectivelyFrozen: true, merged: true, mergedIntoDeptId: '17' }] } } : undefined)
-  await login(page); await nav(page, '人员与组织变动')
-  await page.getByRole('tab', { name: '部门冻结', exact: true }).click()
+  await login(page); await nav(page, '组织管理')
   await expect(page.locator('.department-grid > div').filter({ hasText: '继承冻结部门' })).toContainText('上级部门冻结')
   const merged = page.locator('.department-grid > div').filter({ hasText: '已合并部门' })
   await expect(merged.getByText('已合并', { exact: true })).toBeVisible()
