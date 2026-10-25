@@ -1,227 +1,299 @@
 <script setup>
-import { computed, ref, watch, onBeforeUnmount } from 'vue'
-import { Plus, Search } from 'lucide-vue-next'
-import { api, session } from '../session.js'
-import { can } from '../access.js'
-import { useList, id, statusText, errorText } from '../composables/useList.js'
-import { useActions } from '../composables/useActions.js'
-import ContentDialog from '../components/ContentDialog.vue'
-import AccountTable from '../components/AccountTable.vue'
-import FormDialog from '../components/FormDialog.vue'
-const keyword = ref(''),
+import { ref, onMounted } from 'vue'
+import { can, request, query, refreshSession } from '../api.js'
+import DataTable from '../components/DataTable.vue'
+import EditDialog from '../components/EditDialog.vue'
+const props = defineProps({ grantMode: Boolean })
+const rows = ref([]),
+  departments = ref([]),
+  roles = ref([]),
+  total = ref(0),
+  page = ref(1),
+  keyword = ref(''),
   deptId = ref(''),
-  accountStatus = ref('')
-const list = useList('/users', () => ({
-  keyword: keyword.value.trim(),
-  deptId: deptId.value,
-  status: accountStatus.value,
-}))
-const depts = useList('/departments', () => ({ includeDescendants: true }), {
-  paginated: false,
-  auto: can('IAM_DEPTS_VIEW'),
-})
-const { dialog, error, notice, saved } = useActions()
-const detailId = ref(null),
-  detail = ref(null),
-  detailError = ref(''),
-  detailBusy = ref(false)
-let detailController,
-  detailSequence = 0
-const detailEntries = computed(() =>
-  detail.value
-    ? [
-        ['用户 ID', detail.value.userId],
-        ['姓名', detail.value.realName],
-        ['账号', detail.value.username],
-        ['工号', detail.value.sgNo || '无工号'],
-        ['手机号', detail.value.phone],
-        [
-          '所属部门',
-          depts.rows.find((d) => d.deptId === detail.value.deptId)?.deptName || detail.value.deptId,
-        ],
-        ['来源', { 1: 'HR 同步', 2: '临时', 3: '受控初始化' }[detail.value.source] || '未提供'],
-        ['状态', statusText(detail.value.status)],
-        [
-          '密码初始化',
-          typeof detail.value.passwordInitialized === 'boolean'
-            ? detail.value.passwordInitialized
-              ? '已完成'
-              : '未完成'
-            : '未提供',
-        ],
-      ]
-    : [],
-)
-async function showDetail(user) {
-  detailController?.abort()
-  detailController = new AbortController()
-  const current = ++detailSequence
-  detailId.value = user.userId
-  detail.value = null
-  detailError.value = ''
-  detailBusy.value = true
+  error = ref(''),
+  busy = ref(false),
+  dialog = ref(null),
+  selected = ref([]),
+  batchRole = ref(''),
+  batchResult = ref(null)
+const columns = [
+  { key: 'username', label: '账号' },
+  { key: 'realName', label: '姓名' },
+  { key: 'phone', label: '手机号' },
+  {
+    key: 'deptId',
+    label: '所属部门',
+    format: (id) => departments.value.find((d) => d.id === id)?.deptName || id,
+  },
+  {
+    key: 'source',
+    label: '来源',
+    format: (v) => ({ 1: 'HR 同步', 2: '临时账号', 3: '受控初始化' })[v],
+  },
+  { key: 'status', label: '状态', format: (v) => ({ 1: '可用', 2: '暂停', 3: '离职' })[v] },
+  {
+    key: 'managementScope',
+    label: '管理范围',
+    format: (v) => (v === 'ALL' ? '全公司' : '本部门及下属'),
+  },
+]
+function search() {
+  page.value = 1
+  return load()
+}
+function changePage(delta) {
+  page.value += delta
+  return load()
+}
+async function load() {
+  busy.value = true
+  error.value = ''
+  rows.value = []
+  selected.value = []
   try {
-    const data = await api('/users/' + id(user.userId), { signal: detailController.signal })
-    if (current === detailSequence) detail.value = data
+    const data = await request(
+      '/users' +
+        query({ keyword: keyword.value, deptId: deptId.value, page: page.value, pageSize: 20 }),
+    )
+    rows.value = data.items
+    total.value = Number(data.total)
   } catch (e) {
-    if (current === detailSequence) detailError.value = errorText(e)
+    error.value = e.message
   } finally {
-    if (current === detailSequence) detailBusy.value = false
+    busy.value = false
   }
 }
-function closeDetail() {
-  detailSequence++
-  detailController?.abort()
-  detailId.value = null
-  detail.value = null
-}
-watch(() => session.accessVersion, closeDetail)
-onBeforeUnmount(closeDetail)
-const editable = (user) => user.source === 2 && !user.sgNo && [1, 2].includes(user.status)
-let searchTimer
-function search() {
-  clearTimeout(searchTimer)
-  void list.load()
-}
-watch(keyword, () => {
-  clearTimeout(searchTimer)
-  searchTimer = setTimeout(search, 350)
+onMounted(async () => {
+  try {
+    departments.value = await request('/departments')
+    if (can('IAM_GRANTS_VIEW')) roles.value = await request('/roles')
+  } catch (e) {
+    error.value = e.message
+  }
+  await load()
 })
-onBeforeUnmount(() => clearTimeout(searchTimer))
-function create() {
+function open(title, fields, initial, save) {
   dialog.value = {
-    title: '新建临时账号',
-    initial: { deptId: '', realName: '', phone: '', reason: '' },
-    fields: [
-      { key: 'realName', label: '姓名', maxlength: 64 },
-      { key: 'phone', label: '手机号', type: 'tel', pattern: '1[0-9]{10}', maxlength: 11 },
+    title,
+    fields,
+    initial,
+    save: async (body) => {
+      await save(body)
+      await refreshSession()
+    },
+  }
+}
+function temporary() {
+  open(
+    '创建临时账号',
+    [
+      { key: 'username', label: '账号', max: 64 },
+      { key: 'realName', label: '姓名', max: 64 },
+      { key: 'phone', label: '手机号', max: 11 },
       {
         key: 'deptId',
         label: '所属部门',
-        ...(depts.rows.length
-          ? { options: depts.rows.map((d) => ({ value: d.deptId, label: d.deptName })) }
-          : {}),
+        type: 'select',
+        options: departments.value.map((d) => ({ value: d.id, label: d.deptName })),
       },
-      { key: 'reason', label: '用途', type: 'textarea' },
+      { key: 'password', label: '初始密码', type: 'password', hint: '8–64 位，包含字母和数字' },
     ],
-    note: '账号由服务端生成，无工号；本人首次验证设密后才能登录。',
-    submit: async (body) => {
-      await api('/users/temporary', { method: 'POST', body })
-      await list.load()
-    },
+    { deptId: departments.value[0]?.id },
+    (body) => request('/users/temporary', { method: 'POST', body }),
+  )
+}
+function edit(row) {
+  open(
+    '维护临时账号',
+    [
+      { key: 'realName', label: '姓名', max: 64 },
+      { key: 'phone', label: '手机号', max: 11 },
+    ],
+    row,
+    (body) => request('/users/' + row.id, { method: 'PATCH', body }),
+  )
+}
+function reset(row) {
+  open(
+    '重置密码 · ' + row.realName,
+    [{ key: 'password', label: '新密码', type: 'password', hint: '保存后，该账号全部旧会话失效' }],
+    {},
+    (body) => request(`/users/${row.id}/password`, { method: 'PUT', body }),
+  )
+}
+function scope(row) {
+  open(
+    '管理数据范围 · ' + row.realName,
+    [
+      {
+        key: 'managementScope',
+        label: '数据范围',
+        type: 'select',
+        options: [
+          { value: 'DEPT_TREE', label: '本部门及下属部门' },
+          { value: 'ALL', label: '全公司' },
+        ],
+        hint: '范围只限定管理对象，实际操作仍需角色权限',
+      },
+    ],
+    row,
+    (body) => request(`/users/${row.id}/scope`, { method: 'PUT', body }),
+  )
+}
+async function assign(row) {
+  try {
+    const roleIds = await request(`/users/${row.id}/roles`)
+    open(
+      '分配角色 · ' + row.realName,
+      [
+        {
+          key: 'roleIds',
+          label: '角色',
+          type: 'checks',
+          options: roles.value
+            .filter((r) => r.status === 1 || roleIds.includes(r.id))
+            .map((r) => ({
+              value: r.id,
+              label: r.roleName + (r.status === 1 ? '' : '（已停用）'),
+            })),
+          hint: '勾选即拥有，取消即回收；保存完整配置',
+        },
+      ],
+      { roleIds: roleIds.map(String) },
+      (body) => request(`/users/${row.id}/roles`, { method: 'PUT', body }),
+    )
+  } catch (e) {
+    error.value = e.message
   }
 }
-function toggle(user) {
-  if (!can('IAM_USERS_WRITE') || !editable(user)) return
-  dialog.value = {
-    title: user.status === 1 ? '暂停账号' : '恢复账号',
-    initial: { reason: '' },
-    fields: [{ key: 'reason', label: '操作原因', type: 'textarea' }],
-    note: '目标账号：' + user.username + '。历史记录和角色关系保留；恢复账号不会解除部门冻结。',
-    submit: async (body) => {
-      await api('/users/' + id(user.userId) + '/status', {
-        method: 'PATCH',
-        body: { ...body, status: user.status === 1 ? 2 : 1 },
-      })
-      await list.load(list.page)
-    },
+async function status(row) {
+  if (
+    !window.confirm(
+      row.status === 1
+        ? `暂停 ${row.realName}？该账号的角色将清空，旧会话失效。`
+        : `恢复 ${row.realName}？恢复后需重新分配角色。`,
+    )
+  )
+    return
+  try {
+    await request(`/users/${row.id}/status`, {
+      method: 'PATCH',
+      body: { status: row.status === 1 ? 2 : 1 },
+    })
+    await refreshSession()
+    await load()
+  } catch (e) {
+    error.value = e.message
+  }
+}
+async function batch(operation) {
+  if (!selected.value.length || !batchRole.value || busy.value) return
+  if (
+    !window.confirm(
+      `对所选 ${selected.value.length} 人${operation === 'GRANT' ? '授予' : '回收'}角色？`,
+    )
+  )
+    return
+  busy.value = true
+  error.value = ''
+  try {
+    batchResult.value = await request('/grants/batch', {
+      method: 'POST',
+      body: { userIds: selected.value, roleId: batchRole.value, operation },
+    })
+    await refreshSession()
+  } catch (e) {
+    error.value = e.message
+  } finally {
+    busy.value = false
   }
 }
 </script>
 <template>
-  <div class="page-heading">
-    <div>
-      <h1>用户账号</h1>
-      <p>管理账号与账号状态</p>
-    </div>
-    <button v-if="can('IAM_USERS_WRITE')" class="button primary" @click="create">
-      <Plus :size="16" />新建临时账号
-    </button>
-  </div>
-  <p v-if="error" class="app-error" role="alert">{{ error }}</p>
-  <p v-if="notice" class="action-notice" role="status">{{ notice }}</p>
-  <AccountTable :state="list" :departments="depts.rows">
-    <template #toolbar
-      ><form class="inline-form account-filters" @submit.prevent="search">
-        <div class="search-field">
-          <button type="submit" aria-label="查询" :disabled="list.busy">
-            <Search :size="17" /></button
-          ><input
-            v-model="keyword"
-            aria-label="搜索姓名、账号或工号"
-            placeholder="搜索姓名、账号或工号"
-            maxlength="64"
-          />
-        </div>
-        <select v-if="depts.rows.length" v-model="deptId" aria-label="筛选部门" @change="search">
-          <option value="">全部部门</option>
-          <option v-for="d in depts.rows" :key="d.deptId" :value="d.deptId">
-            {{ d.deptName }}
-          </option></select
-        ><select v-model="accountStatus" aria-label="筛选账号状态" @change="search">
-          <option value="">全部状态</option>
-          <option :value="1">可用</option>
-          <option :value="2">暂停</option>
-          <option :value="3">离职</option></select
-        ><span class="toolbar-summary">共 {{ list.total }} 个账号</span>
-      </form></template
-    >
-    <template #actions="{ row }"
-      ><button class="text-button" @click="showDetail(row)">详情</button
-      ><button
-        v-if="can('IAM_USERS_WRITE') && editable(row)"
-        class="text-button secondary-action"
-        @click="toggle(row)"
-      >
-        {{ row.status === 1 ? '暂停' : '恢复' }}
-      </button></template
-    >
-  </AccountTable>
-  <p class="contract-note">
-    手动创建的临时账号可暂停或恢复；HR
-    同步账号的状态由人员事件更新。部门冻结独立生效，不改变账号状态。
+  <p class="description">
+    {{
+      grantMode
+        ? '为管理范围内的用户授予或回收角色。多个角色的权限共同生效。'
+        : '统一维护账号，正式员工由 HR 同步，外部人员使用临时账号。'
+    }}
   </p>
-  <ContentDialog
-    v-if="detailId !== null"
-    class="account-detail-dialog"
-    title="账号详情"
-    @close="closeDetail"
-    ><p v-if="detailBusy" class="muted">正在读取…</p>
-    <div v-else-if="detailError">
-      <p role="alert" class="app-error">{{ detailError }}</p>
-      <button class="button light" @click="showDetail({ userId: detailId })">重新加载</button>
-    </div>
-    <dl v-else class="account-details">
-      <template v-for="[label, value] in detailEntries" :key="label"
-        ><dt>{{ label }}</dt>
-        <dd>{{ value ?? '—' }}</dd></template
+  <section class="panel">
+    <form class="toolbar" @submit.prevent="search">
+      <input v-model="keyword" aria-label="搜索用户" placeholder="搜索姓名、账号或工号" /><select
+        v-model="deptId"
+        aria-label="筛选部门"
       >
-    </dl></ContentDialog
-  >
-  <FormDialog
-    :allowed="can('IAM_USERS_WRITE')"
-    v-if="dialog"
-    v-bind="dialog"
-    @close="dialog = null"
-    @saved="saved"
-  />
+        <option value="">全部可见部门</option>
+        <option v-for="d in departments" :key="d.id" :value="d.id">{{ d.deptName }}</option></select
+      ><button :disabled="busy">查询</button
+      ><button
+        v-if="can('IAM_USERS_WRITE') && !grantMode"
+        type="button"
+        class="primary"
+        @click="temporary"
+      >
+        创建临时账号
+      </button>
+    </form>
+    <p v-if="error" role="alert" class="error">{{ error }}</p>
+    <div v-if="grantMode && can('IAM_GRANTS_WRITE')" class="batch-bar">
+      <span>已选 {{ selected.length }} 人</span
+      ><select v-model="batchRole" aria-label="批量角色">
+        <option value="">选择角色</option>
+        <option v-for="r in roles.filter((r) => r.status === 1)" :key="r.id" :value="r.id">
+          {{ r.roleName }}
+        </option></select
+      ><button :disabled="busy || !selected.length || !batchRole" @click="batch('GRANT')">
+        批量授予</button
+      ><button :disabled="busy || !selected.length || !batchRole" @click="batch('REVOKE')">
+        批量回收
+      </button>
+    </div>
+    <DataTable :rows="rows" :columns="columns" :loading="busy"
+      ><template #actions="{ row }">
+        <label v-if="grantMode && can('IAM_GRANTS_WRITE')" class="check"
+          ><input
+            v-model="selected"
+            type="checkbox"
+            :value="row.id"
+            :aria-label="'选择' + row.realName"
+          />选择</label
+        >
+        <button v-if="can('IAM_GRANTS_VIEW') && can('IAM_GRANTS_WRITE')" @click="assign(row)">
+          角色
+        </button>
+        <button v-if="!grantMode && row.source === 2 && can('IAM_USERS_WRITE')" @click="edit(row)">
+          编辑
+        </button>
+        <button
+          v-if="!grantMode && row.source === 2 && can('IAM_USERS_WRITE')"
+          @click="status(row)"
+        >
+          {{ row.status === 1 ? '暂停' : '恢复' }}
+        </button>
+        <button
+          v-if="!grantMode && row.status !== 3 && can('IAM_PASSWORD_RESET')"
+          @click="reset(row)"
+        >
+          重置密码
+        </button>
+        <button v-if="!grantMode && can('IAM_SCOPE_WRITE')" @click="scope(row)">范围</button>
+      </template></DataTable
+    >
+    <footer class="pagination">
+      <span>共 {{ total }} 人 · 第 {{ page }} 页</span
+      ><button :disabled="page === 1 || busy" @click="changePage(-1)">上一页</button
+      ><button :disabled="page * 20 >= total || busy" @click="changePage(1)">下一页</button>
+    </footer>
+  </section>
+  <section v-if="batchResult" class="panel result">
+    <h3>批量结果：{{ batchResult.succeeded }} / {{ batchResult.total }} 人成功</h3>
+    <ul>
+      <li v-for="item in batchResult.items" :key="item.userId">
+        用户 {{ item.userId }}：{{ item.success ? '成功' : item.message }}
+      </li>
+    </ul>
+  </section>
+  <EditDialog v-if="dialog" v-bind="dialog" @close="dialog = null" @saved="load" />
 </template>
-
-<style scoped>
-.account-detail-dialog {
-  width: 520px;
-}
-.account-details {
-  display: grid;
-  grid-template-columns: 100px minmax(0, 1fr);
-  gap: 12px;
-  margin: 0;
-}
-.account-details dt {
-  color: #7c8983;
-}
-.account-details dd {
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-</style>

@@ -1,37 +1,24 @@
-# 权限管理控制台
+# 统一权限管理控制台
 
-Vue 3 + Vite。只保留正式管理页面，管理账号、组织、资源、角色、授权、管理员和审计。
+Vue 3 + Vite。用户账号、角色、应用资源、权限分配、组织、日志和 OA/HR 业务演示共用一套界面。
 
-## 启动
-
-```sh
+```powershell
 npm ci
 npm run dev
 ```
 
-复制 .env.example 为 .env.local 按需修改。API_PROXY_TARGET 默认 http://127.0.0.1:8080，浏览器 API 路径 /api/v1，VITE_IAM_APP_CODE=IAM 须与后端一致。VITE_* 对浏览器公开，不能放密钥。
+后端默认 http://127.0.0.1:8080；可在 .env.local 设置 API_PROXY_TARGET。前端只访问 /api/v1，服务密钥不能放在 VITE_* 或前端文件中。
 
-真实账号和权限需要后端初始化；请求失败不回退到模拟数据。JWT 保存在内存，刷新后重新登录。平台自身管理也使用这套页面。
+JWT 仅保存在内存，刷新需重新登录；菜单和按钮按当前 IAM 菜单权限显示。后端每次独立鉴权，页面显示不等于实际授权。不存在单独的管理员任命或等级检查。
 
-## 开发与测试
+忘记密码、首次使用员工账号，由有权限的管理者在用户管理中重置。临时账号创建时设置密码。不再使用短信、密码历史、授权来源或编辑版本号。
 
-| 命令 | 用途 |
-| --- | --- |
-| npm run dev | 连接真实后端 |
-| npm run dev:mock | 同一页面 + 本地模拟 API |
-| npm test | 正式页面交互与契约回归 |
-| npm run build | 构建至 dist |
-| npm run format:check | 格式检查 |
+```powershell
+npm test
+npm run build
+npm run format:check
+```
 
-测试使用本机 Chrome 和 5175、5176 端口。模拟账号 admin / 123456、验证码 123456 仅供本地测试，不是后端初始化账号。
+测试使用本机 Chrome 与 5175 端口，在 Playwright 内拦截请求测试界面契约，不作为真实数据库验收。正式开发不提供模拟 API，也不会在后端失败时回退假数据。
 
-dev/fixtures.json 是模拟测试所需的演示夹具，不是数据库种子。它保留 10000 员工、111 部门、18 应用及 359 功能点，电话使用合成的完整演示号码，字段为 phone，模拟 ID 不作为真实授权事实。模拟服务不进入正式构建。生产部署需将 /api 反向代理至后端，Vite 代理不会进入 dist。
-
-## 阅读代码
-
-- src/views：功能页面；src/components：公共组件。
-- src/api：请求与响应校验；session.js、access.js：会话与按钮显示。
-- tests：正式页面测试；dev：模拟测试适配器。
-- 工作区统一 [功能说明](../backend/docs/GUIDE.md)、[设计依据](../backend/docs/contracts/README.md)、[测试记录](../backend/docs/TESTING.md)。
-
-按钮显示不能替代后端鉴权。受控初始化入口见后端功能说明；真实页面端到端验收仍待完成。
+src/api.js 管理会话和请求，src/views 是业务页面，src/components 为表格和编辑对话框。后端运行和全量初始化见 [后端说明](https://github.com/Ye331/WhatNameBackend/blob/refactor/simplify/README.md)。
