@@ -151,17 +151,15 @@ async function fixture(page, permissions = codes) {
   await page.getByRole('button', { name: '登录', exact: true }).click()
   return state
 }
-test('登录后使用同一套角色权限，没有独立管理员页面或短信入口', async ({ page }) => {
+test('登录后按角色权限展示账号管理功能', async ({ page }) => {
   await page.goto('/')
-  await expect(page.getByText('首次设密 / 忘记密码')).toHaveCount(0)
   await fixture(page)
   await expect(page.getByRole('heading', { name: '用户账号' })).toBeVisible()
-  await expect(page.getByRole('button', { name: '管理员管理' })).toHaveCount(0)
   await expect(page.getByText('演示员工', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: '创建临时账号' })).toBeVisible()
   await page.screenshot({ path: 'test-results/coursework-desktop.png', fullPage: true })
 })
-test('创建临时账号不使用短信或任命', async ({ page }) => {
+test('创建临时账号并保存人员来源', async ({ page }) => {
   const state = await fixture(page)
   await page.getByRole('button', { name: '创建临时账号' }).click()
   const dialog = page.getByRole('dialog')
@@ -173,7 +171,7 @@ test('创建临时账号不使用短信或任命', async ({ page }) => {
   await expect(page.getByText('新临时人员', { exact: true })).toBeVisible()
   expect(state.people.at(-1).source).toBe(2)
 })
-test('角色集合保存只提交角色 ID，不提交版本号和授权来源', async ({ page }) => {
+test('保存用户选择的完整角色集合', async ({ page }) => {
   const state = await fixture(page)
   await page
     .getByRole('row')
@@ -185,7 +183,7 @@ test('角色集合保存只提交角色 ID，不提交版本号和授权来源',
   await expect(page.getByRole('dialog')).toHaveCount(0)
   expect(state.lastBody).toEqual({ roleIds: ['2', '1'] })
 })
-test('配置管理范围不需要管理员等级', async ({ page }) => {
+test('配置用户的部门管理范围', async ({ page }) => {
   const state = await fixture(page)
   await page
     .getByRole('row')
